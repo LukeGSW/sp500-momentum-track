@@ -179,6 +179,42 @@ didactics.render("turnover", expanded=True)
 st.divider()
 
 # ---------------------------------------------------------------------------
+st.subheader("Serie escluse dallo studio")
+escl = man.get("exclusions_applied") or []
+if not escl:
+    st.info(
+        "Nessuna esclusione attiva. Se il dataset e' stato costruito con una versione "
+        "precedente della pipeline, ricostruiscilo per applicare `exclusions.csv`.",
+        icon="ℹ️",
+    )
+else:
+    applicate = [e for e in escl if e.get("applicata")]
+    st.caption(
+        f"{len(applicate)} serie escluse su {len(escl)} dichiarate, **prima di "
+        "qualunque calcolo**. La lista e' versionata in `exclusions.csv` e finisce "
+        "nei caveats dell'export: l'esclusione e' parte del metodo, non un ritocco "
+        "sui risultati."
+    )
+    st.dataframe(
+        pd.DataFrame(escl), width="stretch", hide_index=True,
+        column_config={
+            "osservazioni_rimosse": st.column_config.NumberColumn("Sedute rimosse", format="%d"),
+            "applicata": st.column_config.CheckboxColumn("Applicata"),
+            "reason": st.column_config.TextColumn("Motivo", width="large"),
+        },
+    )
+    st.warning(
+        "Le esclusioni sono state individuate **guardando i risultati**. E' pulizia "
+        "legittima quando l'errore e' verificabile in modo indipendente (una fusione "
+        "documentata, non 'peggiora la performance'), ma resta una scelta post-hoc: "
+        "un risultato ottenuto dopo aver rimosso dati scelti a posteriori vale meno "
+        "di uno preregistrato. Riporta sempre i numeri con e senza.",
+        icon="⚠️",
+    )
+
+st.divider()
+
+# ---------------------------------------------------------------------------
 st.subheader("Caccia alle anomalie: dal mese sospetto al titolo colpevole")
 st.markdown(
     "Un paniere equipesato di 30 titoli **non fa ±40% in un mese**. Quando succede "
