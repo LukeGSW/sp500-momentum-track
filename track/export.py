@@ -243,9 +243,14 @@ def build_export(
     diagnostics = diagnostics or {}
     is_prereg = cfg.hash() == TrackConfig().hash()
 
+    # `paniere` e' indispensabile: `in_portfolio` da solo e' l'UNIONE dei quattro
+    # panieri, e chi legge il file lo scambia inevitabilmente per "e' nel paniere
+    # forte". Senza il nome del paniere l'export si presta a essere interpretato
+    # al contrario.
     snap_cols = [c for c in ("ticker", "name", "sector", "F", "V", "band", "band_label",
-                             "band_prev_label", "giorni_in_fascia", "sopra_media_mobile",
-                             "tradable", "in_portfolio") if c in snapshot.columns]
+                             "band_prev_label", "movimento", "giorni_in_fascia",
+                             "sopra_media_mobile", "prezzo", "tradable",
+                             "in_portfolio", "paniere") if c in snapshot.columns]
     snap = snapshot[snap_cols].copy()
     for c in ("F", "V"):
         if c in snap.columns:
@@ -350,11 +355,21 @@ senza quei limiti sono fuorvianti.
   E' la velocita' lungo la pista.
 - **Fasce**: quintili trasversali di F, dal basso `Fondo Griglia`, `Rimonta`,
   `Gruppo`, `Scia`, `Testa Corsa`. Sono un ordinamento, non soglie assolute.
+- **`in_portfolio`**: vero se il titolo e' in **uno qualsiasi** dei quattro
+  panieri simulati, non solo in quello forte. Per sapere quale, usare il campo
+  **`paniere`**. Contare `in_portfolio` come "appartiene al paniere momentum"
+  e' l'errore piu' facile da commettere leggendo questo file.
 - **Panieri**: 30 titoli per paniere, 100.000$ per paniere, holding 3 mesi con
   tranche mensili sfalsate, lotti interi, cassa remunerata al T-bill 3 mesi.
 
 ## Cosa NON dedurre
 
+0. Il paniere forte e' selezionato **sul livello di forza relativa F**, non
+   sulla sua derivata V. Un titolo entra perche' e' forte, anche se sta
+   rallentando: nel paniere convivono nomi con V negativa. "Momentum" qui
+   significa *rendimento relativo passato elevato*, non *accelerazione in corso*.
+   E F e' un confronto **con gli altri titoli eleggibili**, non con l'indice:
+   il rendimento dell'indice si cancella nella standardizzazione trasversale.
 1. Un CAGR piu' alto **non** significa segnale migliore se la volatilita' e' piu'
    alta: guarda `Sharpe` e la distribuzione nulla.
 2. Battere SPY **non** e' rilevante: il confronto corretto e' la distribuzione
