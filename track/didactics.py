@@ -233,6 +233,48 @@ _add("dwell_time", Block(
 # PAGINA 2 - BACKTEST
 # ===========================================================================
 
+_add("verdetto", Block(
+    title="Il verdetto e come va letto",
+    cosa=(
+        "Una sintesi di cosa i dati permettono di affermare, e di cosa no. Non e' "
+        "un test statistico: e' la **convergenza di indicatori indipendenti**."
+    ),
+    lettura=(
+        "**Perche' non basta il p-value.** Il test di significativita' risponde a "
+        "*posso rifiutare l'ipotesi nulla al 5%?* Con 26 anni e questo rapporto "
+        "segnale/rumore la risposta e' no, e servirebbero decenni di storia in piu' "
+        "per cambiarla. Ma chi investe affronta un'altra domanda: *date due "
+        "alternative, quale scelgo?* Li' non serve rifiutare un'ipotesi nulla, serve "
+        "sapere da che parte pendono le prove.",
+        "**Assenza di significativita' non e' evidenza di assenza.** Un t-stat di 1,4 "
+        "su un campione piccolo dice che la stima e' positiva e i dati inclinano in "
+        "quella direzione, non che l'effetto sia zero.",
+        "**Ogni indicatore e' debole da solo.** Il segno della stima, la coerenza fra "
+        "le due meta' del campione, la frequenza di successo su finestre mobili, la "
+        "tenuta agli stress, i costi, l'asimmetria: presi singolarmente non provano "
+        "nulla. Se puntano tutti nella stessa direzione la conclusione e' piu' solida "
+        "di quanto un t-stat lasci credere.",
+        "**Forza dell'evidenza**: *convergente* se almeno tre indicatori su quattro "
+        "concordano, *moderata* sopra la meta', *contraddittoria* sotto. E' una "
+        "misura di coerenza, non una probabilita'.",
+        "**Il vincitore non e' deciso a priori**: e' il paniere estremo con il "
+        "rendimento composto piu' alto sui dati correnti. Se i dati cambiassero "
+        "segno, cambierebbe anche il verdetto.",
+    ),
+    attenzione=(
+        "**Non e' una dimostrazione.** Nessuna analisi puo' produrre significativita' "
+        "statistica da un campione che non ne contiene abbastanza. Chi legge questa "
+        "pagina come una prova la sta leggendo male.",
+        "**Il campione e' uno solo**: un mercato, 26 anni, meno di trenta osservazioni "
+        "annuali indipendenti. Non ci sono dati fuori campione su cui validare.",
+        "**Gli indicatori non sono del tutto indipendenti fra loro.** Frequenza di "
+        "successo e segno della stima misurano cose correlate: contarli come voti "
+        "separati sovrastima leggermente la convergenza.",
+        "**Il passato non si ripete su richiesta.** Un regime nuovo, o semplicemente "
+        "l'affollamento della strategia, puo' annullare il vantaggio osservato.",
+    ),
+))
+
 _add("equity_curves", Block(
     title="Curve di capitale (regime composto)",
     cosa=(
