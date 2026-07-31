@@ -10,7 +10,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from track import didactics, plotting, ui, universe
+from track import analysis, didactics, plotting, ui, universe
 from track.config import BAND_NAMES
 
 ui.page_config("Diagnostica")
@@ -176,5 +176,115 @@ cost_tab = res.metrics[["Turnover medio", "Posizioni medie", "Costo annuo %", "C
 st.dataframe(ui.format_metrics(cost_tab), width="stretch")
 didactics.render("turnover", expanded=True)
 
+st.divider()
+
+# ---------------------------------------------------------------------------
+st.subheader("Caccia alle anomalie: dal mese sospetto al titolo colpevole")
+st.markdown(
+    "Un paniere equipesato di 30 titoli **non fa ±40% in un mese**. Quando succede "
+    "e' quasi sempre uno split non gestito o un prezzo sbagliato in una singola "
+    "posizione. Qui si risale dal mese al titolo."
+)
+
+# lo slider lavora in punti percentuali interi: passandogli una frazione,
+# il formato "%.0f%%" arrotonderebbe 0,20 a "0%"
+soglia = st.slider("Soglia di sospetto sul rendimento mensile (%)", 10, 50, 20, 5,
+                   help="Sopra il 30% l'ipotesi 'evento di mercato' e' da scartare "
+                        "quasi sempre. Tra 15% e 30% va guardato caso per caso: "
+                        "marzo 2020 e ottobre 2008 sono esistiti davvero.") / 100.0
+
+if st.button("Cerca i mesi anomali (esegue il backtest con l'attribuzione attiva)"):
+    st.session_state["attrib_study"] = ui.get_study_with_attribution(cfg)
+
+if "attrib_study" in st.session_state:
+    res_attr = st.session_state["attrib_study"]
+    anom = analysis.anomalous_periods(res_attr.results, threshold=soglia)
+
+    if anom.empty:
+        st.success(f"Nessun mese oltre il {soglia:.0%} su nessun paniere.", icon="✅")
+    else:
+        gravi = anom[~anom["verosimile"]]
+        if not gravi.empty:
+            st.error(
+                f"**{len(gravi)} mesi oltre il 30%**: per un paniere diversificato "
+                "sono implausibili. Vanno indagati prima di dare peso ai risultati.",
+                icon="🚨",
+            )
+        st.dataframe(
+            anom.assign(data=anom["data"].dt.strftime("%Y-%m-%d")),
+            width="stretch", hide_index=True,
+            column_config={
+                "rendimento": st.column_config.NumberColumn("Rendimento", format="%.2f%%"),
+                "verosimile": st.column_config.CheckboxColumn(
+                    "Plausibile", help="Falso se oltre il 30%: quasi certamente un errore di dato"),
+            },
+        )
+
+        st.markdown("**Attribuzione di un mese**")
+        a1, a2 = st.columns(2)
+        with a1:
+            scelta_pf = st.selectbox("Paniere", sorted(anom["paniere"].unique()))
+        with a2:
+            mesi = anom[anom["paniere"] == scelta_pf]["data"].sort_values()
+            scelta_mese = st.selectbox("Mese", list(mesi),
+                                       format_func=lambda d: pd.Timestamp(d).strftime("%B %Y"))
+
+        try:
+            attr = analysis.attribution(res_attr.results[scelta_pf], pd.Timestamp(scelta_mese),
+                                        top=12, names=ds.names, sectors=ds.sectors)
+        except ValueError as exc:
+            st.error(str(exc))
+            attr = pd.DataFrame()
+
+        if attr.empty:
+            st.info("Nessuna posizione con P&L in questo periodo.")
+        else:
+            st.dataframe(
+                attr, width="stretch", hide_index=True,
+                column_config={
+                    "pnl_usd": st.column_config.NumberColumn("P&L (USD)", format="%.0f"),
+                    "quota_del_periodo": st.column_config.NumberColumn(
+                        "Quota del mese", format="%.1f%%"),
+                },
+            )
+            dominante = attr.iloc[0]
+            if abs(dominante["quota_del_periodo"]) > 0.5:
+                st.error(
+                    f"**{dominante['ticker']}** da solo spiega il "
+                    f"{dominante['quota_del_periodo']:.0%} del mese. "
+                    "Con ogni probabilita' e' il dato sbagliato.", icon="🎯",
+                )
+
+            st.markdown(f"**Prezzi intorno alla data — {dominante['ticker']}**")
+            ctx = analysis.price_context(ds.close_adj, ds.open_raw,
+                                         str(dominante["ticker"]),
+                                         pd.Timestamp(scelta_mese), window=8)
+            if ctx.empty:
+                st.info("Serie prezzi non disponibile per questo titolo.")
+            else:
+                st.dataframe(
+                    ctx.assign(data=ctx.index.strftime("%Y-%m-%d")).reset_index(drop=True),
+                    width="stretch", hide_index=True,
+                    column_config={
+                        "adjusted": st.column_config.NumberColumn(format="%.2f"),
+                        "grezzo": st.column_config.NumberColumn(format="%.2f"),
+                        "var_adjusted": st.column_config.NumberColumn("Δ adjusted", format="%.1f%%"),
+                        "var_grezzo": st.column_config.NumberColumn("Δ grezzo", format="%.1f%%"),
+                        "scarto": st.column_config.NumberColumn(
+                            "Scarto", format="%.1f%%",
+                            help="Divergenza fra i due rendimenti: se e' grande, "
+                                 "il fattore di rettifica e' sbagliato"),
+                    },
+                )
+                if ctx["scarto"].max() > 0.15:
+                    st.warning(
+                        "Prezzo grezzo e adjusted si muovono in modo molto diverso: "
+                        "e' la firma di uno **split non gestito** nella serie rettificata.",
+                        icon="⚠️",
+                    )
+
+didactics.render("anomaly_hunt", expanded=True)
+
+st.divider()
 with st.expander("Manifest completo del dataset"):
     st.json(man)
