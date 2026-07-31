@@ -1,0 +1,17 @@
+# La Pista — dipendenze
+# Testato su Python 3.14.6 con le versioni indicate come "verificato".
+#
+# NB: niente matplotlib. La colorazione delle tabelle e' calcolata a mano
+# (track/ui.py::heat_table) proprio per evitare ~30 MB di dipendenza sul
+# deploy Streamlit Cloud.
+
+streamlit>=1.50          # verificato con 1.60.0 (serve width="stretch")
+pandas>=2.2              # verificato con 3.0.5
+numpy>=1.26              # verificato con 2.5.1
+plotly>=5.20             # verificato con 6.9.0
+pyarrow>=14.0            # verificato con 24.0.0 — lettura/scrittura Parquet
+requests>=2.31           # verificato con 2.34.2 — solo pipeline offline
+scipy>=1.11              # verificato con 1.18.0
+
+# sviluppo
+pytest>=8.0              # verificato con 9.1.1
