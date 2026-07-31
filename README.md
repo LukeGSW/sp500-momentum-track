@@ -55,9 +55,9 @@ Metti la chiave in `.streamlit/secrets.toml` (parti da
 python -m pipeline.verify_data
 ```
 
-**Esegui sempre questo per primo.** Verifica in pochi minuti se il tuo piano
-EODHD rende lo studio fattibile — soprattutto se esistono i prezzi dei titoli
-*delistati*, che è la condizione senza la quale il backtest non può rispondere
+**Esegui sempre questo per primo.** Verifica in pochi minuti se i dati rendono
+lo studio fattibile — soprattutto se esistono i prezzi dei titoli *usciti
+dall'indice*, che è la condizione senza la quale il backtest non può rispondere
 alla domanda. Poi:
 
 ```bash
@@ -65,8 +65,40 @@ python -m pipeline.build_dataset
 streamlit run app.py
 ```
 
-Il download completo è di circa 1.100–1.300 chiamate API e richiede alcuni
-minuti.
+Il download completo è di circa 1.200 chiamate API e richiede alcuni minuti.
+
+### Da dove vengono i costituenti storici
+
+**EODHD serve solo per i prezzi.** L'endpoint `fundamentals/GSPC.INDX`, che
+darebbe le appartenenze storiche all'indice, è incluso solo in alcuni piani e
+risponde `403 Forbidden` sugli altri.
+
+La fonte predefinita è quindi
+[fja05680/sp500](https://github.com/fja05680/sp500) (licenza MIT), che non
+richiede alcuna entitlement e per giunta parte dal **1996** invece che dal 2000
+— quindi rende potenzialmente analizzabile anche la *salita* della bolla
+dot-com, non solo lo scoppio.
+
+Se il tuo piano include l'endpoint EODHD puoi usarlo comunque:
+
+```bash
+python -m pipeline.build_dataset --constituents-source eodhd
+```
+
+> ⚠️ La fonte GitHub è una **ricostruzione di terze parti**, non un dato
+> ufficiale S&P: 1996-2019 dal dataset di *Trading Evolved* (Clenow), poi dal
+> tracciamento delle variazioni su Wikipedia. Le ricostruzioni sbagliano, e
+> l'errore si accumula andando indietro: nel 1996 risultano ~463 titoli invece
+> di ~500, quindi in quegli anni il backtest misura un sottoinsieme
+> dell'indice. Il conteggio annuo è esposto in `verify_data` e nella
+> diagnostica.
+
+**I settori** arrivano dalla lista corrente, quindi esistono per i 503 membri
+attuali ma non per le ~700 società uscite dall'indice, che restano *Non
+classificato*. Conseguenza: l'opzione sector-neutral è inaffidabile sui
+backtest storici lunghi. Se il tuo piano include i Fundamentals per singolo
+titolo puoi colmare la lacuna una volta sola con
+`--enrich-sectors` (~700 chiamate API in più).
 
 ---
 
@@ -107,6 +139,39 @@ come asset di una Release.
 | Ipotesi nulla = **estrazione casuale**, non SPY | Isola la selezione per fascia dall'equal weighting, dal filtro e dalla composizione dell'universo |
 
 Il dettaglio completo è nella pagina **Metodologia** della dashboard.
+
+---
+
+## Serie prezzi compromesse
+
+Alcune serie contengono errori accertati — fusioni con concambio non gestito,
+split assenti dal fattore di rettifica. Un solo titolo può produrre un mese a
++40% su un paniere equipesato e falsare l'intero studio: nel dataset reale,
+**RAI (Reynolds American)** da sola valeva il 110% del P&L di agosto 2004.
+
+Le esclusioni vivono in **`exclusions.csv`, versionato nel repository**, e
+vengono applicate dalla pipeline *prima* di qualunque calcolo. Finiscono nel
+manifest del dataset e nei `caveats` dell'export. Sono parte del metodo, non un
+ritocco a valle.
+
+```bash
+python -m pipeline.find_bad_series
+```
+
+Analizza il dataset già costruito (nessuna chiamata API) e propone le righe da
+incollare. Tre segnali: rendimenti oltre soglia, **divergenza fra prezzo
+rettificato e grezzo** (la firma dello split non gestito), e salti che
+rientrano il giorno dopo. Le proposte non vengono applicate da sole: vanno
+verificate a mano e copiate con un motivo scritto da te.
+
+> ⚠️ Le esclusioni sono state individuate **guardando i risultati**. È pulizia
+> legittima quando l'errore è verificabile in modo indipendente (una fusione
+> documentata, non "peggiora la performance"), ma resta una scelta post-hoc.
+> Riporta sempre i numeri con e senza.
+
+Preferire sempre una **finestra stretta** intorno all'evento: scartare
+vent'anni di dati validi per un errore di un mese introduce un bias peggiore di
+quello che corregge.
 
 ---
 
@@ -157,12 +222,35 @@ significato.
 
 1. Push del repository su GitHub.
 2. Su [share.streamlit.io](https://share.streamlit.io) punta a `app.py`.
-3. Nessun secret necessario: l'app non chiama EODHD.
-4. Rendi disponibili i dati con una di queste due strade:
-   - il workflow GitHub Actions pubblica una Release, e un piccolo passo di
-     avvio la scarica in `data/`;
-   - oppure, per un primo giro, esegui `make_demo_data` in locale e committa
-     temporaneamente `data/` rimuovendolo da `.gitignore`.
+3. Configura il secret `EODHD_API_KEY` **nel repository GitHub** (Settings →
+   Secrets and variables → Actions) e lancia il workflow *Aggiorna dataset*.
+   Costruisce i dati e li pubblica come asset di una Release.
+4. Nei secret **dell'applicazione Streamlit** (Settings → Secrets) indica dove
+   trovarli:
+
+```toml
+DATA_REPO = "tuo-utente/tuo-repository"
+```
+
+Al primo avvio l'app scarica `la-pista-data.tar.gz` dall'ultima Release e lo
+estrae in `data/`. Il risultato resta in cache per tutta la vita del container,
+quindi il download avviene una volta sola.
+
+Varianti:
+
+| secret | quando serve |
+|---|---|
+| `DATA_URL` | URL diretto di un archivio, se non usi le Release |
+| `DATA_TOKEN` | repository privato: token con permesso di lettura |
+
+L'app **non ha bisogno della chiave EODHD**: non chiama mai l'API a runtime.
+Nessun visitatore consuma la tua quota.
+
+Per lavorare in locale sugli stessi dati senza rifare il download da EODHD:
+
+```bash
+python -m pipeline.fetch_dataset --repo tuo-utente/tuo-repository
+```
 
 ---
 
