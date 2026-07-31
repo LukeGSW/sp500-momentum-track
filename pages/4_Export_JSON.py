@@ -139,7 +139,7 @@ with b1:
     st.download_button(
         f"⬇ Scarica lo studio ({level})",
         data=raw,
-        file_name=f"la_pista_{level}_{stamp}_{cfg.hash()}.json",
+        file_name=f"rs_monitor_{level}_{stamp}_{cfg.hash()}.json",
         mime="application/json",
         width="stretch",
         type="primary",
