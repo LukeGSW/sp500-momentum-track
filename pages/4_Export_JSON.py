@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from track import analysis, backtest as bt
-from track import didactics, export, study, ui
+from track import didactics, export, study, ui, verdict
 from track.config import BAND_NAMES, PREREGISTERED
 
 ui.page_config("Export")
@@ -83,6 +83,26 @@ if include_null:
 stress_df = ui.get_delisting_stress(cfg)
 stress = {col: stress_df[col].to_dict() for col in stress_df.columns}
 
+# Il verdetto viaggia con l'export: senza, chi riceve il JSON deve ricostruire
+# da solo la conclusione, e con ogni probabilita' la ricostruisce sbagliata.
+cagr_estremi = {n: res.metrics.loc[n, "CAGR"] for n in (study.P_TOP, study.P_BOTTOM)
+                if n in res.metrics.index}
+verdict_payload = {}
+if len(cagr_estremi) == 2:
+    _null = ui.get_bootstrap(cfg, min(cfg.n_bootstrap, 250)) if include_null else None
+    _pv = {"Sharpe": {n: bt.empirical_pvalue(_null["Sharpe"], res.metrics.loc[n, "Sharpe"])
+                      for n in res.metrics.index}} if _null is not None else None
+    _v = verdict.build_verdict(
+        {n: r.returns for n, r in res.results.items()}, res.metrics,
+        vincitore=max(cagr_estremi, key=cagr_estremi.get),
+        perdente=min(cagr_estremi, key=cagr_estremi.get),
+        riferimento=study.P_UNIVERSE, capitale=cfg.capital,
+        stress=stress_df,
+        persistenza=analysis.transition_matrix(sig.bands, cfg.n_bands, BAND_NAMES, 21),
+        null_pvalues=_pv,
+    )
+    verdict_payload = verdict.to_dict(_v)
+
 provenance = dict(ds.manifest)
 provenance["snapshot_as_of"] = str(pd.Timestamp(as_of).date())
 
@@ -100,6 +120,7 @@ payload = export.build_export(
                  "spread_tstat_newey_west": res.spread_tstat,
                  "costo_per_rotazione_bps": study.current_cost_bps(cfg)},
     stress=stress,
+    verdict_payload=verdict_payload,
     level=level,
 )
 
