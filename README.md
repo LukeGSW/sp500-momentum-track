@@ -1,4 +1,4 @@
-# 🏁 La Pista
+# 📈 Monitor di Forza Relativa
 
 **Conviene comprare azioni in forte momentum, o in debolezza momentanea?**
 
@@ -14,15 +14,15 @@ I titoli vengono disposti lungo un **asse verticale di forza relativa**: in alto
 i forti, in basso i deboli, misurati confrontandoli fra loro e non in valore
 assoluto. Le undici colonne sono i settori GICS.
 
-Il momentum **non è un secondo asse**: è la pendenza della scia, cioè il
-movimento verticale del titolo nelle settimane precedenti. Su una pista dritta
+Il momentum **non è un secondo asse**: è la pendenza della traiettoria, cioè il
+movimento verticale del titolo nelle settimane precedenti. Su un asse verticale unico
 chi sale sta migliorando e chi scende sta peggiorando — non serve altro.
 
 Da questa geometria discende il punto che rende lo studio possibile: la fascia
 più bassa e quella più alta corrispondono **letteralmente** alla domanda, e i
 due panieri si possono confrontare.
 
-Cinque fasce, dal basso: **Fondo Griglia · Rimonta · Gruppo · Scia · Testa
+Cinque fasce, dal basso: **Q1 Laggard · Q2 Sottoperformanti · Q3 In linea · Q4 Sovraperformanti · Testa
 Corsa**. Sono quintili trasversali, cioè un ordinamento, non soglie assolute.
 
 ---
@@ -113,7 +113,7 @@ pubblico funziona senza chiave, e nessun visitatore consuma la tua quota.
 
 | | |
 |---|---|
-| `track/features.py` | Forza F, Spinta V, fasce. Modulo puro, nessun I/O |
+| `track/features.py` | RS Score, RS Slope, fasce. Modulo puro, nessun I/O |
 | `track/backtest.py` | Motore a tranche sfalsate, costi, ipotesi nulla |
 | `track/universe.py` | Costituenti storici, coverage, ticker riassegnati |
 | `track/didactics.py` | I riquadri esplicativi di ogni grafico e tabella |
@@ -232,7 +232,7 @@ significato.
 DATA_REPO = "tuo-utente/tuo-repository"
 ```
 
-Al primo avvio l'app scarica `la-pista-data.tar.gz` dall'ultima Release e lo
+Al primo avvio l'app scarica `la-mappa-data.tar.gz` dall'ultima Release e lo
 estrae in `data/`. Il risultato resta in cache per tutta la vita del container,
 quindi il download avviene una volta sola.
 
