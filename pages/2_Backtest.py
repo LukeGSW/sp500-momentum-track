@@ -1,0 +1,340 @@
+"""
+Backtest — qui la domanda riceve una risposta misurata.
+
+Quattro panieri da 100.000$ ciascuno, indipendenti, piu' un riferimento senza
+attriti e un'ipotesi nulla costruita con lo stesso motore.
+"""
+from __future__ import annotations
+
+from dataclasses import replace
+
+import numpy as np
+import pandas as pd
+import streamlit as st
+
+from track import backtest as bt
+from track import didactics, plotting, study, ui
+from track.config import PREREGISTERED
+
+ui.page_config("Backtest")
+
+if not ui.require_dataset():
+    st.stop()
+
+cfg = ui.sidebar_config()
+ds = ui.get_dataset()
+res = ui.get_study(cfg)
+
+ui.header("Backtest", ds)
+
+if res.panel.n_periods < 24:
+    st.error(
+        f"Solo {res.panel.n_periods} ribilanciamenti disponibili: troppo pochi per "
+        "qualunque conclusione. Controlla la data di inizio o la copertura dei dati."
+    )
+    st.stop()
+
+st.caption(didactics.escape_markdown(
+    f"{res.panel.n_periods} ribilanciamenti mensili · "
+    f"{res.diagnostics['primo_ribilanciamento']} → {res.diagnostics['ultimo_ribilanciamento']} · "
+    f"holding {cfg.holding_months} mesi su {cfg.n_tranches} tranche sfalsate · "
+    f"{cfg.n_names} titoli per paniere · slot {cfg.slot_value:,.0f}$ · "
+    f"costo {study.current_cost_bps(cfg):.1f} bps per rotazione"
+))
+
+equities = {name: r.equity for name, r in res.results.items()}
+returns = {name: r.returns for name, r in res.results.items()}
+
+# ---------------------------------------------------------------------------
+# La risposta, in una riga
+# ---------------------------------------------------------------------------
+m = res.metrics
+top_c = m.loc[study.P_TOP, "CAGR"]
+bot_c = m.loc[study.P_BOTTOM, "CAGR"]
+pull_c = m.loc[study.P_PULLBACK, "CAGR"] if study.P_PULLBACK in m.index else np.nan
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Q5 Leader (momentum forte)", f"{top_c:.1%}",
+          delta=f"{top_c - bot_c:+.1%} vs Q1 Laggard")
+k2.metric("Q1 Laggard (debolezza relativa)", f"{bot_c:.1%}")
+k3.metric("Leader in ritracciamento", "—" if pd.isna(pull_c) else f"{pull_c:.1%}",
+          help="Titoli della fascia alta con RS Slope negativo: la 'debolezza "
+               "momentanea di un titolo forte'.")
+k4.metric("t-stat dello spread (Newey-West)", f"{res.spread_tstat:.2f}",
+          help="|t| > 2 e' la soglia convenzionale; su dati finanziari con scelta "
+               "di parametri molti ricercatori chiedono |t| > 3.")
+
+if cfg.hash() != PREREGISTERED.hash():
+    st.warning(
+        "Configurazione **personalizzata**: questi risultati sono esplorazione, non "
+        "una conclusione. Confrontali con la configurazione preregistrata prima di "
+        "trarre inferenze.", icon="🧪",
+    )
+
+# Un paniere che quasi mai raggiunge la dimensione prevista non e' confrontabile
+# con gli altri: va detto sopra, non lasciato dedurre da una colonna.
+_max_pos = cfg.n_names * cfg.n_tranches
+_thin = {
+    name: r.diagnostics.get("mesi_paniere_incompleto", 0)
+    for name, r in res.results.items()
+    if name != study.P_UNIVERSE
+    and r.diagnostics.get("mesi_paniere_incompleto", 0) > 0.5 * res.panel.n_periods
+}
+if _thin:
+    righe = "\n".join(
+        f"- **{n}**: paniere incompleto in {v}/{res.panel.n_periods} ribilanciamenti "
+        f"(posizioni medie {m.loc[n, 'Posizioni medie']:.0f} su {_max_pos} teoriche)"
+        for n, v in _thin.items() if n in m.index
+    )
+    st.warning(
+        "**Panieri sistematicamente sotto-dimensionati.**\n\n" + righe +
+        "\n\nLa fascia non conteneva abbastanza titoli che soddisfacessero il "
+        "criterio. Questi panieri sono meno diversificati degli altri, quindi piu' "
+        "volatili e piu' rumorosi: il confronto con gli altri non e' alla pari.",
+        icon="⚠️",
+    )
+
+tab_res, tab_rob, tab_dati = st.tabs(
+    ["Risultato", "Robustezza e inferenza", "Costi, dati e orizzonti"]
+)
+
+# ===========================================================================
+with tab_res:
+    log_scale = st.toggle("Scala logaritmica", value=True,
+                          help="Su un periodo lungo la scala lineare rende invisibile "
+                               "tutto cio' che accade nei primi anni.")
+    ui.chart(plotting.plot_equity(equities, log_scale=log_scale), key="equity")
+    didactics.render("equity_curves", expanded=True)
+
+    ui.chart(plotting.plot_fixed_capital(
+        {n: r.fixed_capital_pnl for n, r in res.results.items()}), key="fixedcap")
+    didactics.render("fixed_capital_pnl")
+
+    st.subheader("Metriche")
+    st.dataframe(ui.format_metrics(m), width="stretch")
+    didactics.render("metrics_table", expanded=True)
+
+    ui.chart(plotting.plot_drawdown(equities), key="dd")
+    didactics.render("drawdown")
+
+# ===========================================================================
+with tab_rob:
+    st.subheader("Ipotesi nulla: 30 titoli estratti a caso")
+    st.caption(
+        "Stesso motore, stessi costi, stesso arrotondamento a lotti interi, stesso "
+        "universo eleggibile. L'unica differenza e' che la selezione e' casuale."
+    )
+
+    n_draws = st.select_slider("Estrazioni", options=[100, 250, 500, 1000, 2000],
+                               value=min(cfg.n_bootstrap, 500))
+    null = ui.get_bootstrap(cfg, int(n_draws))
+
+    observed = {n: m.loc[n, "CAGR"] for n in (study.P_TOP, study.P_BOTTOM, study.P_PULLBACK)
+                if n in m.index}
+    observed_sharpe = {n: m.loc[n, "Sharpe"] for n in observed}
+
+    n1, n2 = st.columns(2)
+    with n1:
+        ui.chart(plotting.plot_null_distribution(null["CAGR"], observed, "CAGR"), key="null_cagr")
+    with n2:
+        ui.chart(plotting.plot_null_distribution(null["Sharpe"], observed_sharpe, "Sharpe"),
+                 key="null_sharpe")
+
+    pvals = pd.DataFrame({
+        "p-value CAGR": {n: bt.empirical_pvalue(null["CAGR"], v) for n, v in observed.items()},
+        "p-value Sharpe": {n: bt.empirical_pvalue(null["Sharpe"], v)
+                           for n, v in observed_sharpe.items()},
+        "CAGR mediano casuale": {n: float(null["CAGR"].median()) for n in observed},
+    })
+    st.dataframe(pvals.style.format({"p-value CAGR": "{:.3f}", "p-value Sharpe": "{:.3f}",
+                                     "CAGR mediano casuale": "{:.2%}"}), width="stretch")
+    didactics.render("null_distribution", expanded=True)
+
+    st.divider()
+    st.subheader("Spread Q5 − Q1")
+    s1, s2, s3 = st.columns(3)
+    s1.metric("Media mensile", f"{res.spread.mean():+.2%}")
+    s2.metric("Annualizzata", f"{res.spread.mean() * 12:+.1%}")
+    s3.metric("t-stat (NW, 3 lag)", f"{res.spread_tstat:.2f}")
+    ui.chart(plotting.plot_series({"Spread Q5 − Q1": res.spread.cumsum()},
+                                  "Spread cumulato (somma dei rendimenti mensili)",
+                                  "somma cumulata", percent=True), key="spread")
+    didactics.render("longshort")
+
+    st.divider()
+    st.subheader("Tenuta nei diversi regimi di mercato")
+    sub = bt.subperiod_table(res.results, res.rf_period)
+    if not sub.empty:
+        pivot = sub.pivot_table(index="Periodo", columns="Paniere", values="CAGR")
+        order = [p for p, _, _ in bt.SUBPERIODS if p in pivot.index]
+        st.dataframe(ui.heat_table(pivot.reindex(order), "{:.1%}"), width="stretch")
+    didactics.render("subperiods", expanded=True)
+
+    st.divider()
+    st.subheader("Quanto dipende da pochi mesi")
+    hm1, hm2 = st.columns([3, 2])
+    with hm1:
+        which = st.selectbox("Paniere", list(res.results), index=0, key="hm_pick")
+        ui.chart(plotting.plot_monthly_heatmap(returns[which], f"Rendimenti mensili — {which}"),
+                 key="heatmap")
+    with hm2:
+        st.markdown("**Togliendo i mesi migliori**")
+        rows = []
+        for name, r in returns.items():
+            for k in (1, 3, 5, 10):
+                d = bt.drop_best_months(r, k)
+                if d:
+                    rows.append({"Paniere": name, "Mesi tolti": k,
+                                 "Rendimento totale": d[f"senza i {k} mesi migliori"]})
+        if rows:
+            tab = pd.DataFrame(rows).pivot_table(index="Paniere", columns="Mesi tolti",
+                                                 values="Rendimento totale")
+            full = {n: float((1 + r).prod()) - 1 for n, r in returns.items()}
+            tab.insert(0, 0, pd.Series(full))
+            st.dataframe(tab.style.format("{:.0%}", na_rep="—"), width="stretch")
+            st.caption("Colonna 0 = periodo intero. Se il vantaggio sparisce togliendo "
+                       "cinque mesi, non e' un edge ripetibile.")
+    didactics.render("monthly_heatmap")
+
+# ===========================================================================
+with tab_dati:
+    st.subheader("Sensibilita' ai costi di transazione")
+    sens = ui.get_cost_sensitivity(cfg)
+    ui.chart(plotting.plot_cost_sensitivity(sens, study.current_cost_bps(cfg)), key="costs")
+    didactics.render("cost_breakeven", expanded=True)
+
+    st.divider()
+    st.subheader("Stress test sul survivorship bias")
+    st.caption(
+        "Il backtest ripetuto imponendo un rendimento terminale ai titoli che "
+        "spariscono dai dati. E' il test piu' importante di questa pagina."
+    )
+    stress = ui.get_delisting_stress(cfg)
+    st.dataframe(ui.heat_table(stress, "{:.2%}"), width="stretch")
+    liq = {k.split(" — ")[0]: v for k, v in res.diagnostics.items()
+           if k.endswith("liquidazioni_forzate")}
+    if liq:
+        st.caption("Liquidazioni forzate per titolo sparito: " +
+                   " · ".join(f"{k}: {int(v)}" for k, v in liq.items()))
+    didactics.render("delisting_stress", expanded=True)
+
+    st.divider()
+    st.subheader("Quanto viene dal filtro e quanto dalla selezione")
+    st.markdown(
+        "Il filtro *prezzo sopra la media a 200 sedute* **non e' neutrale**: e' esso "
+        "stesso una scommessa sul momentum. Finche' resta sempre acceso, il suo "
+        "effetto e quello della selezione per fascia restano confusi insieme. Qui "
+        "sono separati."
+    )
+    if st.button("Calcola il 2×2 (riesegue lo studio con il filtro spento)"):
+        st.session_state["filter_2x2"] = ui.get_filter_decomposition(cfg)
+
+    if "filter_2x2" in st.session_state:
+        dec = st.session_state["filter_2x2"]
+
+        piv = dec.pivot_table(index="Paniere", columns="Filtro media mobile",
+                              values="CAGR", sort=False)
+        piv = piv.reindex([p for p in (*study.PORTFOLIO_ORDER, "Spread Q5 − Q1")
+                           if p in piv.index])
+        piv["differenza"] = piv.get("attivo") - piv.get("spento")
+        st.dataframe(ui.heat_table(piv, "{:.2%}"), width="stretch")
+        st.caption("Colonna **differenza** = contributo del filtro a quel paniere, "
+                   "in punti di CAGR annuo.")
+
+        sp_att = piv.loc["Spread Q5 − Q1", "attivo"] if "Spread Q5 − Q1" in piv.index else np.nan
+        sp_spe = piv.loc["Spread Q5 − Q1", "spento"] if "Spread Q5 − Q1" in piv.index else np.nan
+        if np.isfinite(sp_att) and np.isfinite(sp_spe):
+            effetto = sp_att - sp_spe
+            q1, q2, q3 = st.columns(3)
+            q1.metric("Spread con filtro", f"{sp_att:.2%}")
+            q2.metric("Spread senza filtro", f"{sp_spe:.2%}")
+            q3.metric("Effetto del filtro sullo spread", f"{effetto:+.2%}",
+                      help="Differenza in punti di CAGR annuo. Deliberatamente una "
+                           "differenza e non un rapporto: un rapporto esplode quando "
+                           "lo spread senza filtro e' vicino a zero e cambia segno "
+                           "in modo illeggibile.")
+
+            # La lettura dipende dal segno e non e' ovvia: va scritta.
+            if sp_spe <= 0 < sp_att:
+                st.success(
+                    "**Senza filtro il vantaggio del momentum sparisce.** Quello che "
+                    "il backtest attribuiva alla selezione per fascia era in realta' "
+                    "l'esclusione dei titoli sotto la media mobile.", icon="🔍")
+            elif effetto > 0.02:
+                st.info(
+                    f"Il filtro **aggiunge** {effetto:.1%} annuo allo spread: esclusione "
+                    "e selezione lavorano nella stessa direzione, ma una parte "
+                    "consistente del risultato viene dall'esclusione.", icon="🔍")
+            elif effetto < -0.02:
+                st.warning(
+                    f"Il filtro **toglie** {abs(effetto):.1%} annuo allo spread: la "
+                    "selezione per fascia funziona meglio sull'universo intero. In "
+                    "questo campione il filtro non sta aiutando la strategia, sta "
+                    "restringendo l'universo e basta.", icon="🔍")
+            else:
+                st.info(
+                    "Il filtro sposta lo spread di meno di 2 punti annui: **e' quasi "
+                    "irrilevante** per il confronto fra i due panieri. Quello che "
+                    "misuri e' selezione per fascia, non esclusione.", icon="🔍")
+
+        with st.expander("Universo e rischio nelle due modalita'"):
+            st.dataframe(
+                dec.pivot_table(index="Paniere",
+                                columns="Filtro media mobile",
+                                values=["Sharpe", "Max DD", "Universo medio"], sort=False)
+                .style.format("{:.2f}", na_rep="—"),
+                width="stretch",
+            )
+
+    didactics.render("filter_decomposition", expanded=True)
+
+    st.divider()
+    st.subheader("Griglia degli orizzonti")
+    st.markdown(
+        "Lo stesso studio con holding di 1, 3 e 6 mesi, **ciascuno con il lookback "
+        "congruente al proprio holding**. Un segnale reale produce risultati della "
+        "stessa direzione su tutti e tre; uno che funziona solo a un orizzonte e si "
+        "inverte sugli altri e' un artefatto."
+    )
+    if st.button("Calcola la griglia (ricalcola RS Score e RS Slope: puo' richiedere tempo)"):
+        rows = []
+        prog = st.progress(0.0, text="…")
+        for i, h in enumerate((1, 3, 6)):
+            prog.progress(i / 3, text=f"holding {h} mesi…")
+            c = replace(cfg, holding_months=h)
+            r = ui.get_study(c)
+            for name in (study.P_TOP, study.P_BOTTOM, study.P_PULLBACK):
+                if name in r.metrics.index:
+                    rows.append({
+                        "Holding (mesi)": h,
+                        "Orizzonti F": ", ".join(str(x) for x in c.horizons),
+                        "Paniere": name,
+                        "CAGR": r.metrics.loc[name, "CAGR"],
+                        "Sharpe": r.metrics.loc[name, "Sharpe"],
+                        "Turnover": r.metrics.loc[name, "Turnover medio"],
+                        "Costo annuo %": r.metrics.loc[name, "Costo annuo %"],
+                    })
+            rows.append({
+                "Holding (mesi)": h, "Orizzonti F": ", ".join(str(x) for x in c.horizons),
+                "Paniere": "Spread Q5 − Q1",
+                "CAGR": r.metrics.loc[study.P_TOP, "CAGR"] - r.metrics.loc[study.P_BOTTOM, "CAGR"],
+                "Sharpe": np.nan, "Turnover": np.nan, "Costo annuo %": np.nan,
+            })
+        prog.empty()
+        grid = pd.DataFrame(rows)
+        st.session_state["horizon_grid"] = grid
+
+    if "horizon_grid" in st.session_state:
+        grid = st.session_state["horizon_grid"]
+        st.dataframe(
+            grid.style.format({"CAGR": "{:.2%}", "Sharpe": "{:.2f}",
+                               "Turnover": "{:.1%}", "Costo annuo %": "{:.2%}"}, na_rep="—"),
+            width="stretch", hide_index=True,
+        )
+        st.caption(f"La configurazione preregistrata e' holding **{PREREGISTERED.holding_months} "
+                   f"mesi** con orizzonti {', '.join(str(h) for h in PREREGISTERED.horizons)}.")
+    didactics.render("horizon_grid", expanded=True)
+
+    st.divider()
+    with st.expander("Diagnostica del run"):
+        st.json(res.diagnostics)
