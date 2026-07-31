@@ -667,6 +667,74 @@ _add("turnover", Block(
     ),
 ))
 
+_add("filter_decomposition", Block(
+    title="Decomposizione del filtro (2×2)",
+    cosa=(
+        "Lo stesso studio eseguito due volte — con il filtro *prezzo sopra la "
+        "media a 200 sedute* attivo e spento — per ciascun paniere. Separa "
+        "l'effetto dell'**esclusione** da quello della **selezione**."
+    ),
+    lettura=(
+        "**La riga che conta e' lo Spread Testa − Fondo.** Se resta grande anche "
+        "con il filtro spento, la selezione per fascia funziona da sola. Se si "
+        "sgonfia, quello che sembrava momentum era in buona parte il filtro.",
+        "**Confronta Testa Corsa con filtro attivo e spento.** La differenza e' "
+        "il contributo del filtro a quel paniere. Stessa cosa per Fondo Griglia: "
+        "li' il filtro fa il lavoro piu' pesante, perche' e' quello che impedisce "
+        "di comprare titoli in vera disfatta invece che in semplice ritardo.",
+        "**Guarda la colonna Universo medio.** Con il filtro attivo l'universo si "
+        "dimezza abbondantemente. Un paniere di 30 nomi pescati da 250 titoli e' "
+        "molto piu' selettivo dello stesso paniere pescato da 500: parte della "
+        "differenza di rendimento e' semplicemente questo.",
+        "Se il filtro spiega quasi tutto, la conclusione operativa cambia: non "
+        "serve inseguire i piu' forti, basta **escludere quelli sotto la media**. "
+        "E' un'operazione molto piu' economica in turnover e molto piu' robusta.",
+    ),
+    attenzione=(
+        "**Il filtro non e' neutrale: e' gia' una scommessa sul momentum.** Con il "
+        "filtro attivo la domanda dello studio smette di essere 'momentum o "
+        "debolezza' e diventa 'leader o ritracciamento dentro un trend'. Sono due "
+        "domande diverse e le risposte non sono intercambiabili.",
+        "Con il filtro spento la fascia piu' bassa contiene titoli in **vera** "
+        "disfatta, non in ritardo relativo. Il paniere Fondo Griglia diventa un "
+        "portafoglio di titoli strutturalmente compromessi, e il confronto con "
+        "Testa Corsa misura qualcosa di piu' brutale.",
+        "Il filtro e' **prociclico**: nei bear market l'universo collassa e i "
+        "panieri si concentrano proprio quando conta di piu'. Il beneficio non e' "
+        "gratuito.",
+    ),
+))
+
+_add("anomaly_hunt", Block(
+    title="Caccia alle anomalie di dato",
+    cosa=(
+        "I mesi in cui un paniere ha prodotto un rendimento implausibile, e "
+        "l'attribuzione del P&L al singolo titolo che l'ha causato."
+    ),
+    lettura=(
+        "**Un paniere equipesato di 30 titoli non fa ±40% in un mese.** Sopra il "
+        "30% l'ipotesi 'evento di mercato' e' da scartare quasi sempre: e' uno "
+        "split non gestito o un prezzo sbagliato. Tra il 15% e il 30% va guardato "
+        "caso per caso — marzo 2020 e ottobre 2008 sono esistiti davvero.",
+        "**L'attribuzione** ordina le posizioni per contributo in dollari. Se un "
+        "solo titolo spiega la quasi totalita' del mese, hai trovato il colpevole.",
+        "**Il contesto prezzi** mostra grezzo e adjusted intorno alla data. La "
+        "colonna *scarto* misura di quanto divergono i due rendimenti: se il "
+        "prezzo grezzo dimezza e l'adjusted no, il fattore di rettifica e' "
+        "sbagliato e la serie va scartata o corretta.",
+        "Un mese anomalo che cade nel paniere vincente e ne spiega una quota "
+        "importante del vantaggio **invalida la conclusione**, non la conferma.",
+    ),
+    attenzione=(
+        "L'attribuzione non include il taglio applicato ai delistati nello stress "
+        "test, ne' gli interessi sulla liquidita': la somma dei contributi non "
+        "coincide esattamente con il P&L del periodo.",
+        "Trovare l'anomalia non la corregge. Una volta identificato il titolo, va "
+        "deciso se scartarlo, correggerlo a mano, o rieseguire lo studio "
+        "escludendolo — e riportare la scelta fatta.",
+    ),
+))
+
 _add("data_quality", Block(
     title="Anomalie di dato",
     cosa=(
