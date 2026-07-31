@@ -65,15 +65,42 @@ CAVEAT_LIBRARY: list[dict[str, str]] = [
         "mitigation": "stress test con rendimento terminale imposto a -30%, -50%, -100%",
     },
     {
-        "id": "coverage_start_2000",
+        "id": "constituents_are_a_reconstruction",
         "description": (
-            "La lista storica dei costituenti S&P 500 di EODHD parte da gennaio 2000 "
-            "e i prezzi US sono disponibili prevalentemente dalla stessa data. La "
-            "salita della bolla dot-com (1995-1999) non e' analizzabile; lo scoppio "
-            "(2000-2002) si."
+            "La lista dei costituenti storici NON e' un dato ufficiale S&P: e' la "
+            "ricostruzione di fja05680/sp500 (licenza MIT), costruita dal dataset di "
+            "'Trading Evolved' (Clenow) per il 1996-2019 e dal tracciamento delle "
+            "variazioni su Wikipedia da allora. Le ricostruzioni contengono errori: "
+            "variazioni non registrate, cambi di ticker scambiati per uscita piu' "
+            "ingresso. L'errore si accumula andando indietro nel tempo. Il conteggio "
+            "dei titoli per anno (in diagnostics) mostra un sottoconteggio nei primi "
+            "anni: in quel periodo il backtest misura un sottoinsieme dell'indice."
+        ),
+        "direction_of_bias": "incerta; peggiora andando indietro nel tempo",
+        "mitigation": "conteggio annuo dei costituenti esposto nella diagnostica; "
+                      "leggere con cautela i risultati precedenti al 2005",
+    },
+    {
+        "id": "price_coverage_start",
+        "description": (
+            "I prezzi US di EODHD sono disponibili prevalentemente da gennaio 2000, "
+            "anche se la lista dei costituenti parte dal 1996. Il backtest puo' "
+            "partire prima solo se il coverage report lo conferma, e comunque serve "
+            "circa un anno e mezzo di warm-up per gli orizzonti a 252 sedute."
         ),
         "direction_of_bias": "nessuna direzione, riduce il campione",
-        "mitigation": "nessuna con questa fonte dati",
+        "mitigation": "verify_data misura da che anno esistono davvero i prezzi",
+    },
+    {
+        "id": "sectors_only_for_current_members",
+        "description": (
+            "I settori GICS provengono dalla lista CORRENTE dell'indice: le societa' "
+            "uscite restano 'Non classificato' (circa il 58% dei periodi storici), a "
+            "meno di arricchirli dai Fundamentals EODHD per singolo titolo."
+        ),
+        "direction_of_bias": "rende inaffidabile l'opzione sector-neutral sui backtest "
+                             "storici lunghi; nessun effetto sulla vista corrente",
+        "mitigation": "eseguire build_dataset con --enrich-sectors se il piano lo consente",
     },
     {
         "id": "todays_costs_applied_historically",
