@@ -116,10 +116,22 @@ class TrackConfig:
     """Meta' spread + impatto, in bps sul nozionale tradato, per lato."""
 
     # --- periodo -----------------------------------------------------------
-    download_start: str = "1997-01-01"
-    """I dati partono prima del backtest per riempire il warm-up dei lookback."""
+    download_start: str = "1996-01-01"
+    """I dati partono prima del backtest per riempire il warm-up dei lookback.
+
+    La lista dei costituenti ricostruita parte dal 1996-01-02, quindi tanto
+    vale chiedere i prezzi da subito: non costa chiamate API in piu'.
+    """
 
     backtest_start: str = "2000-01-01"
+    """Default prudente: l'EOD US di EODHD copre bene dal 2000 in poi.
+
+    Se il coverage report mostra dati solidi anche prima, si puo' abbassare
+    fino al 1998 e includere la SALITA della bolla dot-com, non solo lo
+    scoppio. Serve pero' il warm-up: con orizzonti fino a 252 sedute piu' la
+    finestra della Spinta, il primo segnale valido arriva ~15 mesi dopo
+    l'inizio dei prezzi.
+    """
 
     # --- inferenza ---------------------------------------------------------
     n_bootstrap: int = 1000
