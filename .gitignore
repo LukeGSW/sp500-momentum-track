@@ -1,0 +1,24 @@
+# Segreti — MAI committare
+.streamlit/secrets.toml
+*.key
+.env
+
+# Artefatti dati: si pubblicano come asset di una Release, non nel repo
+# (bloat del repository + limite di 100 MB per file di GitHub)
+data/
+*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
