@@ -69,9 +69,22 @@ class Exclusion:
 # ---------------------------------------------------------------------------
 def load_exclusions(path: str | Path | None = None) -> list[Exclusion]:
     """Legge la lista. Assenza del file non e' un errore: significa nessuna esclusione."""
+    # `path is not None` e' indispensabile: str(None).upper() vale "NONE" e
+    # senza la guardia il caso predefinito verrebbe scambiato per la
+    # disattivazione esplicita, saltando in silenzio tutte le esclusioni.
+    if path is not None and str(path).strip().upper() == "NONE":
+        log.warning("ESCLUSIONI DISATTIVATE su richiesta esplicita (--exclusions NONE): "
+                    "le serie con errori accertati resteranno nello studio.")
+        return []
+
     p = Path(path) if path else DEFAULT_FILE
     if not p.exists():
-        log.info("nessun file di esclusioni in %s: procedo con tutte le serie", p)
+        log.warning(
+            "File di esclusioni NON TROVATO in %s. Il dataset verra' costruito con "
+            "tutte le serie, comprese quelle con errori accertati: i risultati "
+            "conterranno i mesi anomali. Se non e' voluto, verifica che "
+            "exclusions.csv sia stato caricato nella radice del progetto.", p,
+        )
         return []
 
     df = pd.read_csv(p, dtype="string", comment="#", skip_blank_lines=True)
