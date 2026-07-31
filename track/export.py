@@ -232,6 +232,7 @@ def build_export(
     transition_matrix: pd.DataFrame | None = None,
     diagnostics: dict | None = None,
     stress: dict | None = None,
+    verdict_payload: dict | None = None,
     level: str = "compact",
 ) -> dict:
     """Costruisce il payload JSON completo.
@@ -296,6 +297,9 @@ def build_export(
             if transition_matrix is not None else {}
         ),
         "diagnostics": _clean(diagnostics),
+        # Il verdetto sta PRIMA dei caveats ma li richiama: chi legge il file
+        # deve trovare la conclusione e i suoi limiti nello stesso posto.
+        "verdict": verdict_payload or {},
         "caveats": CAVEAT_LIBRARY,
     }
 
