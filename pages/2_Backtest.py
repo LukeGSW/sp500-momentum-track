@@ -219,6 +219,76 @@ with tab_dati:
     didactics.render("delisting_stress", expanded=True)
 
     st.divider()
+    st.subheader("Quanto viene dal filtro e quanto dalla selezione")
+    st.markdown(
+        "Il filtro *prezzo sopra la media a 200 sedute* **non e' neutrale**: e' esso "
+        "stesso una scommessa sul momentum. Finche' resta sempre acceso, il suo "
+        "effetto e quello della selezione per fascia restano confusi insieme. Qui "
+        "sono separati."
+    )
+    if st.button("Calcola il 2×2 (riesegue lo studio con il filtro spento)"):
+        st.session_state["filter_2x2"] = ui.get_filter_decomposition(cfg)
+
+    if "filter_2x2" in st.session_state:
+        dec = st.session_state["filter_2x2"]
+
+        piv = dec.pivot_table(index="Paniere", columns="Filtro media mobile",
+                              values="CAGR", sort=False)
+        piv = piv.reindex([p for p in (*study.PORTFOLIO_ORDER, "Spread Testa − Fondo")
+                           if p in piv.index])
+        piv["differenza"] = piv.get("attivo") - piv.get("spento")
+        st.dataframe(ui.heat_table(piv, "{:.2%}"), width="stretch")
+        st.caption("Colonna **differenza** = contributo del filtro a quel paniere, "
+                   "in punti di CAGR annuo.")
+
+        sp_att = piv.loc["Spread Testa − Fondo", "attivo"] if "Spread Testa − Fondo" in piv.index else np.nan
+        sp_spe = piv.loc["Spread Testa − Fondo", "spento"] if "Spread Testa − Fondo" in piv.index else np.nan
+        if np.isfinite(sp_att) and np.isfinite(sp_spe):
+            effetto = sp_att - sp_spe
+            q1, q2, q3 = st.columns(3)
+            q1.metric("Spread con filtro", f"{sp_att:.2%}")
+            q2.metric("Spread senza filtro", f"{sp_spe:.2%}")
+            q3.metric("Effetto del filtro sullo spread", f"{effetto:+.2%}",
+                      help="Differenza in punti di CAGR annuo. Deliberatamente una "
+                           "differenza e non un rapporto: un rapporto esplode quando "
+                           "lo spread senza filtro e' vicino a zero e cambia segno "
+                           "in modo illeggibile.")
+
+            # La lettura dipende dal segno e non e' ovvia: va scritta.
+            if sp_spe <= 0 < sp_att:
+                st.success(
+                    "**Senza filtro il vantaggio del momentum sparisce.** Quello che "
+                    "il backtest attribuiva alla selezione per fascia era in realta' "
+                    "l'esclusione dei titoli sotto la media mobile.", icon="🔍")
+            elif effetto > 0.02:
+                st.info(
+                    f"Il filtro **aggiunge** {effetto:.1%} annuo allo spread: esclusione "
+                    "e selezione lavorano nella stessa direzione, ma una parte "
+                    "consistente del risultato viene dall'esclusione.", icon="🔍")
+            elif effetto < -0.02:
+                st.warning(
+                    f"Il filtro **toglie** {abs(effetto):.1%} annuo allo spread: la "
+                    "selezione per fascia funziona meglio sull'universo intero. In "
+                    "questo campione il filtro non sta aiutando la strategia, sta "
+                    "restringendo l'universo e basta.", icon="🔍")
+            else:
+                st.info(
+                    "Il filtro sposta lo spread di meno di 2 punti annui: **e' quasi "
+                    "irrilevante** per il confronto fra i due panieri. Quello che "
+                    "misuri e' selezione per fascia, non esclusione.", icon="🔍")
+
+        with st.expander("Universo e rischio nelle due modalita'"):
+            st.dataframe(
+                dec.pivot_table(index="Paniere",
+                                columns="Filtro media mobile",
+                                values=["Sharpe", "Max DD", "Universo medio"], sort=False)
+                .style.format("{:.2f}", na_rep="—"),
+                width="stretch",
+            )
+
+    didactics.render("filter_decomposition", expanded=True)
+
+    st.divider()
     st.subheader("Griglia degli orizzonti")
     st.markdown(
         "Lo stesso studio con holding di 1, 3 e 6 mesi, **ciascuno con il lookback "
