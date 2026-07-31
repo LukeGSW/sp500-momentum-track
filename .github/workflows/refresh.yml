@@ -47,7 +47,7 @@ jobs:
                       tests/test_features.py tests/test_backtest.py \
                       tests/test_constituents.py tests/test_storage.py \
                       tests/test_attribution.py tests/test_exclusions.py \
-                      tests/test_verdict.py; do
+                      tests/test_verdict.py tests/test_dataset_flags.py; do
             if [ ! -e "$path" ]; then
               echo "::error::MANCANTE nel repository: $path"
               missing=1
