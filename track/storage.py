@@ -188,8 +188,17 @@ def download_and_extract(
                         allow_redirects=True, stream=True)
     if resp.status_code == 404:
         raise FileNotFoundError(
-            f"Nessun asset trovato a {url}. Verifica che il workflow abbia "
-            "pubblicato una Release e che il nome dell'archivio coincida."
+            f"Nessun asset trovato a {url}\n\n"
+            "GitHub risponde 404 in quattro casi, tutti verificabili in un minuto:\n"
+            "  1. il repository non ha ancora nessuna Release pubblicata\n"
+            "  2. la Release esiste ma e' una bozza (draft): va pubblicata\n"
+            "  3. il nome dell'asset e' diverso da quello atteso\n"
+            "  4. il repository e' privato e manca il token di lettura"
+        )
+    if resp.status_code in (401, 403):
+        raise PermissionError(
+            f"Accesso negato ({resp.status_code}) a {url}. Se il repository e' "
+            "privato serve un token con permesso di lettura nel secret DATA_TOKEN."
         )
     resp.raise_for_status()
 
@@ -218,14 +227,20 @@ def ensure_dataset(
     repo: str | None = None,
     asset: str = DEFAULT_ASSET,
     token: str | None = None,
+    force: bool = False,
 ) -> bool:
     """Se i pannelli mancano, prova a scaricarli. Ritorna True se ci sono.
 
     Serve al deploy: l'app non costruisce mai il dataset (richiederebbe la
     chiave API e minuti di download), ma puo' recuperare quello gia' costruito
     dalla pipeline e pubblicato come Release.
+
+    `force=True` riscarica anche se i dati ci sono gia'. Senza questa opzione
+    un container che ha gia' scaricato una Release continuerebbe a servirla per
+    sempre: pubblicata una versione nuova, l'app non se ne accorgerebbe mai, e
+    l'utente vedrebbe risultati vecchi credendoli aggiornati.
     """
-    if dataset_available(directory):
+    if dataset_available(directory) and not force:
         return True
     if not url and not repo:
         return False
