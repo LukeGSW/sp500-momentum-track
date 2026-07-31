@@ -10,7 +10,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from track import analysis, didactics, plotting, ui, universe
+from track import analysis, didactics, plotting, storage, ui, universe
 from track.config import BAND_NAMES
 
 ui.page_config("Diagnostica")
@@ -28,6 +28,40 @@ man = ds.manifest
 
 # ---------------------------------------------------------------------------
 st.subheader("Provenienza")
+
+# Il dataset viene scaricato una volta sola per container: senza un modo
+# esplicito di forzarlo, una Release nuova non arriverebbe mai all'app e si
+# leggerebbero risultati vecchi credendoli aggiornati.
+r1, r2 = st.columns([3, 1], vertical_alignment="bottom")
+with r1:
+    costruito = man.get("built_at", "sconosciuto")
+    st.caption(
+        f"Dataset in uso costruito il **{costruito}** (UTC). Se hai rilanciato la "
+        "pipeline dopo questo momento, l'app sta ancora servendo la versione "
+        "precedente: usa il pulsante per riscaricarla."
+    )
+with r2:
+    if st.button("Riscarica dataset", width="stretch"):
+        url, repo = ui._secret("DATA_URL"), ui._secret("DATA_REPO")
+        if not url and not repo:
+            st.error("Nessun `DATA_URL` o `DATA_REPO` configurato nei secrets.")
+        else:
+            try:
+                with st.spinner("Scarico l'ultima Release…"):
+                    ok = storage.ensure_dataset(
+                        url=url, repo=repo,
+                        token=ui._secret("DATA_TOKEN") or ui._secret("GITHUB_TOKEN"),
+                        force=True,
+                    )
+                if ok:
+                    st.cache_resource.clear()
+                    st.success("Dataset aggiornato. Ricarico…", icon="✅")
+                    st.rerun()
+                else:
+                    st.error("Archivio scaricato ma incompleto.")
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"**{type(exc).__name__}**: {exc}")
+
 p1, p2, p3, p4 = st.columns(4)
 p1.metric("Fonte", str(man.get("source", "?")))
 p2.metric("Periodo dati", f"{man.get('first_data_date', '?')} → {man.get('last_data_date', '?')}")
@@ -180,6 +214,29 @@ st.divider()
 
 # ---------------------------------------------------------------------------
 st.subheader("Serie escluse dallo studio")
+
+fonte = man.get("exclusions_source")
+if fonte:
+    if not fonte.get("esiste"):
+        st.error(
+            f"**Il file di esclusioni non e' stato trovato** durante la costruzione "
+            f"del dataset (`{fonte.get('file')}`). Nessuna serie compromessa e' stata "
+            "esclusa: i risultati contengono i mesi anomali.",
+            icon="🚨",
+        )
+    else:
+        st.caption(
+            f"File letto dalla pipeline: `{fonte.get('file')}` — "
+            f"**{fonte.get('righe')} righe**, ticker dichiarati: "
+            f"`{'`, `'.join(fonte.get('ticker') or []) or 'nessuno'}` "
+            f"(impronta `{fonte.get('impronta')}`)."
+        )
+        st.caption(
+            "Se un ticker che hai aggiunto non compare in questo elenco, il file "
+            "usato per costruire il dataset **non e' quello aggiornato**: la "
+            "modifica non e' arrivata nel repository prima del run."
+        )
+
 escl = man.get("exclusions_applied") or []
 if not escl:
     st.info(
