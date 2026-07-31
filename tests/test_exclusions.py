@@ -189,6 +189,39 @@ def test_proposte_vuote_se_nessun_caso_certo():
 
 
 # ---------------------------------------------------------------------------
+def test_manifest_distingue_file_assente_da_file_vuoto(tmp_path: Path):
+    """Senza questa distinzione, 'non caricato' e 'caricato ma vuoto' sono
+    indistinguibili a posteriori — ed e' esattamente il caso che si verifica."""
+    assente = exc.exclusions_manifest(tmp_path / "non-esiste.csv")
+    assert assente["esiste"] is False and assente["righe"] == 0
+    assert assente["impronta"] is None
+
+    vuoto = _scrivi(tmp_path, "")
+    m = exc.exclusions_manifest(vuoto)
+    assert m["esiste"] is True and m["righe"] == 0
+    assert m["impronta"] is not None, "un file esistente ha sempre un'impronta"
+
+
+def test_manifest_elenca_i_ticker_dichiarati(tmp_path: Path):
+    p = _scrivi(tmp_path, 'RAI,2004-06-01,2004-12-31,"a"\nRRD,2001-10-01,2002-04-30,"b"\n')
+    m = exc.exclusions_manifest(p)
+
+    assert m["righe"] == 2
+    assert m["ticker"] == ["RAI", "RRD"], "servono i nomi, non solo il conteggio"
+    assert len(m["impronta"]) == 12
+
+
+def test_manifest_cambia_impronta_se_cambia_il_file(tmp_path: Path):
+    a = exc.exclusions_manifest(_scrivi(tmp_path, 'RAI,,,"uno"\n'))
+    b = exc.exclusions_manifest(_scrivi(tmp_path, 'RAI,,,"uno"\nRRD,,,"due"\n'))
+    assert a["impronta"] != b["impronta"]
+
+
+def test_manifest_segnala_disattivazione_esplicita():
+    m = exc.exclusions_manifest("NONE")
+    assert m["disattivate"] is True and m["righe"] == 0
+
+
 def test_il_file_del_progetto_e_leggibile_e_documentato():
     """exclusions.csv fa parte del metodo: deve essere valido e motivato."""
     lista = exc.load_exclusions()
