@@ -108,11 +108,11 @@ jobs:
       - name: Comprimi gli artefatti
         run: |
           cd data
-          tar -czf ../la-pista-data.tar.gz *.parquet manifest.json
+          tar -czf ../rs-monitor-data.tar.gz *.parquet manifest.json
           cd ..
-          ls -lh la-pista-data.tar.gz
+          ls -lh rs-monitor-data.tar.gz
           echo "Contenuto dell'archivio:"
-          tar -tzf la-pista-data.tar.gz
+          tar -tzf rs-monitor-data.tar.gz
 
       # L'app rifiuta un archivio incompleto: meglio accorgersene qui.
       - name: Controlla che l'archivio sia completo
@@ -120,7 +120,7 @@ jobs:
           python - <<'PY'
           import sys, tarfile
           from track.storage import PANELS
-          with tarfile.open("la-pista-data.tar.gz") as t:
+          with tarfile.open("rs-monitor-data.tar.gz") as t:
               names = set(t.getnames())
           missing = [f"{p}.parquet" for p in PANELS if f"{p}.parquet" not in names]
           if missing:
@@ -134,8 +134,8 @@ jobs:
       - name: Salva come artefatto del run
         uses: actions/upload-artifact@v4
         with:
-          name: la-pista-data
-          path: la-pista-data.tar.gz
+          name: rs-monitor-data
+          path: rs-monitor-data.tar.gz
           retention-days: 30
 
       - name: Pubblica come Release
@@ -143,7 +143,7 @@ jobs:
         with:
           tag_name: data-${{ github.run_number }}
           name: Dataset ${{ github.run_number }}
-          files: la-pista-data.tar.gz
+          files: rs-monitor-data.tar.gz
           body: |
             Dataset generato automaticamente.
             Scaricare e scompattare in `data/` prima di avviare l'app.
