@@ -191,6 +191,107 @@ def build_snapshot(
     return df.sort_values("F", ascending=False).reset_index(drop=True)
 
 
+# ---------------------------------------------------------------------------
+# Caccia alle anomalie di dato
+# ---------------------------------------------------------------------------
+def anomalous_periods(
+    results: dict, threshold: float = 0.20
+) -> pd.DataFrame:
+    """Periodi con un rendimento implausibile per un paniere diversificato.
+
+    Un paniere equipesato di 30 titoli che fa +40% in un mese non ha vissuto
+    un evento di mercato: quasi sempre e' uno split non gestito o un prezzo
+    sbagliato in una singola posizione. Sopra il 30% l'ipotesi 'evento reale'
+    e' da scartare quasi sempre; tra il 15% e il 30% va guardata caso per caso
+    (marzo 2020 e novembre 2008 esistono davvero).
+    """
+    rows = []
+    for name, res in results.items():
+        r = res.returns.dropna()
+        for dt, val in r[r.abs() > threshold].items():
+            rows.append({
+                "data": dt,
+                "paniere": name,
+                "rendimento": float(val),
+                "verosimile": bool(abs(val) <= 0.30),
+            })
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    return out.sort_values("rendimento", key=lambda s: s.abs(), ascending=False)
+
+
+def attribution(
+    result,
+    period: pd.Timestamp,
+    top: int = 12,
+    names: pd.Series | None = None,
+    sectors: pd.Series | None = None,
+) -> pd.DataFrame:
+    """Chi ha prodotto il P&L di quel periodo, in dollari e in quota.
+
+    Richiede che il backtest sia stato eseguito con `track_contributions=True`.
+    """
+    if result.contributions is None:
+        raise ValueError(
+            "Attribuzione non disponibile: eseguire run_strategy con "
+            "track_contributions=True"
+        )
+    if period not in result.contributions.index:
+        pos = result.contributions.index.searchsorted(period)
+        if pos >= len(result.contributions.index):
+            raise KeyError(f"periodo {period} fuori dal campione")
+        period = result.contributions.index[pos]
+
+    row = result.contributions.loc[period]
+    row = row[row != 0.0]
+    if row.empty:
+        return pd.DataFrame()
+
+    totale = float(row.sum())
+    df = pd.DataFrame({"ticker": row.index, "pnl_usd": row.to_numpy()})
+    df["quota_del_periodo"] = df["pnl_usd"] / totale if totale != 0 else np.nan
+    if names is not None:
+        df["nome"] = df["ticker"].map(names)
+    if sectors is not None:
+        df["settore"] = df["ticker"].map(sectors)
+
+    df = df.reindex(df["pnl_usd"].abs().sort_values(ascending=False).index)
+    return df.head(top).reset_index(drop=True)
+
+
+def price_context(
+    prices_adj: pd.DataFrame,
+    prices_raw: pd.DataFrame,
+    ticker: str,
+    around: pd.Timestamp,
+    window: int = 8,
+) -> pd.DataFrame:
+    """Prezzi grezzi e adjusted intorno a una data, con i rendimenti.
+
+    Serve a distinguere un evento reale da uno split non gestito: se il prezzo
+    grezzo dimezza e l'adjusted no (o viceversa), il fattore di rettifica e'
+    sbagliato.
+    """
+    if ticker not in prices_adj.columns:
+        return pd.DataFrame()
+
+    idx = prices_adj.index
+    pos = idx.searchsorted(pd.Timestamp(around))
+    lo, hi = max(pos - window, 0), min(pos + window + 1, len(idx))
+    win = idx[lo:hi]
+
+    out = pd.DataFrame({
+        "adjusted": prices_adj.loc[win, ticker],
+        "grezzo": prices_raw.loc[win, ticker] if ticker in prices_raw.columns else np.nan,
+    })
+    out["var_adjusted"] = out["adjusted"].pct_change()
+    out["var_grezzo"] = out["grezzo"].pct_change()
+    # se i due rendimenti divergono, il fattore di rettifica non torna
+    out["scarto"] = (out["var_adjusted"] - out["var_grezzo"]).abs()
+    return out
+
+
 def build_trails(
     tickers: list[str],
     as_of: pd.Timestamp,
