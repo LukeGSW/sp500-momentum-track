@@ -36,8 +36,10 @@ jobs:
           missing=0
           for path in app.py requirements.txt track pages pipeline tests \
                       track/features.py track/backtest.py track/study.py \
+                      track/constituents.py track/universe.py \
                       pipeline/build_dataset.py pipeline/verify_data.py \
-                      tests/test_features.py tests/test_backtest.py; do
+                      tests/test_features.py tests/test_backtest.py \
+                      tests/test_constituents.py; do
             if [ ! -e "$path" ]; then
               echo "::error::MANCANTE nel repository: $path"
               missing=1
@@ -65,15 +67,20 @@ jobs:
       - name: Test (il no-lookahead deve passare prima di toccare i dati)
         run: python -m pytest tests -q
 
-      - name: Verifica preliminare dei dati EODHD
+      # I costituenti arrivano dalla ricostruzione MIT su GitHub, non da EODHD:
+      # l'endpoint sugli indici e' incluso solo in alcuni piani.
+      - name: Verifica preliminare dei dati
         env:
           EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
-        run: python -m pipeline.verify_data --sample 30
+        run: python -m pipeline.verify_data --sample 30 --constituents-source github
 
       - name: Costruisci il dataset
         env:
           EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
-        run: python -m pipeline.build_dataset --limit ${{ github.event.inputs.limit || 0 }}
+        run: |
+          python -m pipeline.build_dataset \
+            --constituents-source github \
+            --limit ${{ github.event.inputs.limit || 0 }}
 
       - name: Comprimi gli artefatti
         run: |
