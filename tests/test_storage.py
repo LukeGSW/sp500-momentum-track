@@ -79,10 +79,55 @@ class _Server:
 # ---------------------------------------------------------------------------
 def test_url_asset_release():
     url = storage.release_asset_url("utente/repo")
-    assert url == "https://github.com/utente/repo/releases/latest/download/la-mappa-data.tar.gz"
+    assert url == ("https://github.com/utente/repo/releases/latest/download/"
+                   + storage.DEFAULT_ASSET)
     # tollera lo slash finale
     assert storage.release_asset_url("utente/repo/") == url
     assert storage.release_asset_url("utente/repo", "altro.tar.gz").endswith("/altro.tar.gz")
+
+
+def test_nomi_storici_diversi_da_quello_corrente():
+    """Se coincidessero il fallback sarebbe inerte, e una Release pubblicata
+    prima della rinomina resterebbe irraggiungibile. E' successo davvero: una
+    sostituzione automatica aveva riscritto anche il nome dell'asset."""
+    assert storage.LEGACY_ASSETS, "serve almeno un nome storico"
+    assert storage.DEFAULT_ASSET not in storage.LEGACY_ASSETS
+
+
+def test_fallback_scarica_dal_nome_storico(tmp_path: Path):
+    """Il nome corrente da' 404, quello storico funziona: deve ripiegare."""
+    payload = _make_archive(list(storage.PANELS), {"manifest.json": b'{"source":"storica"}'})
+    storico = storage.LEGACY_ASSETS[0]
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            if self.path.endswith(storico):
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            else:
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    httpd = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    porta = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{porta}/releases/latest/download/"
+        with pytest.raises(FileNotFoundError):
+            storage.download_and_extract(base + storage.DEFAULT_ASSET, tmp_path)
+        storage.download_and_extract(base + storico, tmp_path)
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+    assert storage.dataset_available(tmp_path)
+    assert storage.load_manifest(tmp_path)["source"] == "storica"
 
 
 def test_download_ed_estrazione(tmp_path: Path):
