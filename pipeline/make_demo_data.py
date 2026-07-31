@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
+from track import exclusions as exc
 from track import universe
 from track.config import GICS_SECTORS, PREREGISTERED
 from pipeline.build_dataset import assemble_price_panels, compute_signal_panels, save_dataset
@@ -121,7 +122,17 @@ def main(argv: list[str] | None = None) -> int:
     calendar = world["calendar"]
 
     const = universe.normalize_constituents(world["constituents"], today=pd.Timestamp(END))
-    close_adj, open_adj, open_raw = assemble_price_panels(world["series"], calendar)
+    close_adj, open_adj, open_raw, close_raw = assemble_price_panels(world["series"], calendar)
+
+    # stessa catena della pipeline reale, cosi' la demo esercita anche questa
+    excl = exc.load_exclusions()
+    panels, excl_report = exc.apply_exclusions(
+        {"close_adj": close_adj, "open_adj": open_adj,
+         "open_raw": open_raw, "close_raw": close_raw},
+        excl,
+    )
+    close_adj, open_adj = panels["close_adj"], panels["open_adj"]
+    open_raw, close_raw = panels["open_raw"], panels["close_raw"]
 
     membership = universe.build_membership(const, calendar)
     membership = membership.reindex(columns=close_adj.columns, fill_value=False)
@@ -138,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
     cov = universe.coverage_report(membership, close_adj)
     provenance = {
         "source": "DATI SINTETICI (demo)",
+        "exclusions_applied": excl_report,
+        "exclusions_count": int(sum(1 for r in excl_report if r.get("applicata"))),
         "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "config_hash": cfg.hash(),
         "first_data_date": str(calendar.min().date()),
@@ -158,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     save_dataset(
         close_adj=close_adj, open_adj=open_adj, open_raw=open_raw,
         membership=membership, signals=signals, sectors=sectors, names=names,
-        risk_free=rf, provenance=provenance,
+        risk_free=rf, provenance=provenance, close_raw=close_raw,
     )
     log.info("dataset demo pronto: %d titoli, %s -> %s",
              close_adj.shape[1], calendar.min().date(), calendar.max().date())
