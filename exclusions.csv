@@ -1,0 +1,16 @@
+# Serie prezzi con errori accertati, escluse dallo studio.
+#
+# QUESTO FILE FA PARTE DEL METODO. Viene applicato dalla pipeline PRIMA di
+# qualunque calcolo, finisce nel manifest del dataset e nei caveats dell'export.
+# Ogni riga deve avere un motivo verificabile: non si esclude un titolo perche'
+# "peggiora il risultato", si esclude perche' il dato e' dimostrabilmente rotto.
+#
+# Formato:  ticker,start_date,end_date,reason
+# Date vuote = intera serie. Preferire SEMPRE una finestra stretta intorno
+# all'evento: scartare anni di dati validi introduce un bias peggiore di quello
+# che si vuole correggere.
+#
+# Per trovare i candidati:  python -m pipeline.find_bad_series
+#
+ticker,start_date,end_date,reason
+RAI,2004-06-01,2004-12-31,"Reynolds American: fusione R.J. Reynolds / Brown & Williamson efficace il 30-07-2004. Il concambio non e' gestito nel fattore di rettifica; la serie produce un +41,8% mensile fittizio sul paniere Testa Corsa (agosto 2004), pari al 110% del P&L di quel mese."
