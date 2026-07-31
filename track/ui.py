@@ -62,6 +62,19 @@ def get_cost_sensitivity(cfg: TrackConfig, data_dir: str | None = None) -> pd.Da
     return study.cost_sensitivity(get_study(cfg, data_dir).panel, cfg)
 
 
+@st.cache_resource(show_spinner="Attribuzione del P&L per titolo…", max_entries=2)
+def get_study_with_attribution(cfg: TrackConfig, data_dir: str | None = None):
+    """Studio con l'attribuzione attiva: piu' pesante, serve solo alla diagnostica."""
+    return study.run_study(get_dataset(data_dir), cfg,
+                           signals=get_signals(cfg, data_dir),
+                           track_contributions=True)
+
+
+@st.cache_resource(show_spinner="Confronto con e senza filtro…", max_entries=2)
+def get_filter_decomposition(cfg: TrackConfig, data_dir: str | None = None) -> pd.DataFrame:
+    return study.filter_decomposition(get_dataset(data_dir), cfg)
+
+
 @st.cache_resource(show_spinner="Stress test sul survivorship bias…", max_entries=2)
 def get_delisting_stress(cfg: TrackConfig, data_dir: str | None = None) -> pd.DataFrame:
     ds = get_dataset(data_dir)
@@ -77,20 +90,55 @@ def get_delisting_stress(cfg: TrackConfig, data_dir: str | None = None) -> pd.Da
 
 
 # ---------------------------------------------------------------------------
+_SECRETS_ERROR: str | None = None
+
+
 def _secret(name: str) -> str | None:
     """Legge un valore dai secrets Streamlit, dall'ambiente o dal file locale.
 
     Su Streamlit Cloud vince `st.secrets` (la piattaforma li inietta). In
     locale funziona anche lanciando l'app da un'altra cartella, perche'
     `storage.read_secret` guarda pure nel secrets.toml del progetto.
+
+    Un eventuale errore di `st.secrets` (tipicamente un secrets.toml malformato)
+    viene memorizzato invece che ingoiato: senza, l'utente vedrebbe solo
+    "dataset non trovato" senza alcun indizio sulla causa.
     """
+    global _SECRETS_ERROR
     try:
         val = st.secrets.get(name)  # type: ignore[union-attr]
         if val:
             return str(val).strip()
-    except Exception:  # noqa: BLE001 - secrets.toml assente: caso normale in locale
-        pass
+    except Exception as exc:  # noqa: BLE001 - assente in locale: caso normale
+        _SECRETS_ERROR = f"{type(exc).__name__}: {exc}"
     return storage.read_secret(name)
+
+
+def _mask(value: str | None) -> str:
+    if not value:
+        return "— non impostato —"
+    if len(value) <= 8:
+        return "•" * len(value)
+    return f"{value[:4]}…{value[-4:]}  ({len(value)} caratteri)"
+
+
+def secrets_report() -> dict:
+    """Cosa vede davvero l'app. Non espone mai il valore dei segreti veri."""
+    report: dict = {"chiavi_in_st_secrets": None, "errore_st_secrets": None, "valori": {}}
+
+    try:
+        report["chiavi_in_st_secrets"] = sorted(st.secrets.keys())  # type: ignore[union-attr]
+    except Exception as exc:  # noqa: BLE001
+        report["errore_st_secrets"] = f"{type(exc).__name__}: {exc}"
+
+    for name in ("DATA_REPO", "DATA_URL"):
+        report["valori"][name] = _secret(name) or "— non impostato —"
+    for name in ("DATA_TOKEN", "GITHUB_TOKEN", "EODHD_API_KEY"):
+        report["valori"][name] = _mask(_secret(name))
+
+    if _SECRETS_ERROR and not report["errore_st_secrets"]:
+        report["errore_st_secrets"] = _SECRETS_ERROR
+    return report
 
 
 @st.cache_resource(show_spinner="Scarico il dataset pubblicato…", max_entries=1)
@@ -133,21 +181,95 @@ def require_dataset() -> bool:
         st.markdown(
             "La pipeline pubblica il dataset come asset di una **Release** su GitHub, "
             "ma l'app non sa dove cercarlo. Indicaglielo nei *secrets* "
-            "dell'applicazione (su Streamlit Cloud: **Settings → Secrets**):"
+            "**dell'applicazione Streamlit** (share.streamlit.io → la tua app → "
+            "**Settings → Secrets**):"
         )
         st.code('DATA_REPO = "tuo-utente/tuo-repository"', language="toml")
-        st.caption(
-            "L'app cerchera' l'asset `la-pista-data.tar.gz` nell'ultima Release. "
-            "In alternativa puoi indicare l'URL diretto di un archivio con "
-            "`DATA_URL = \"https://…/la-pista-data.tar.gz\"`. "
-            "Se il repository e' privato aggiungi anche "
-            "`DATA_TOKEN = \"ghp_…\"` con permesso di lettura."
+        st.warning(
+            "**Non e' lo stesso posto dove hai messo `EODHD_API_KEY`.** Quella va nei "
+            "secret del *repository GitHub* (Settings → Secrets and variables → "
+            "Actions) e serve al workflow. `DATA_REPO` va nei secret "
+            "dell'*applicazione Streamlit* e serve all'app. Sono due pannelli diversi.",
+            icon="⚠️",
         )
+        st.caption(
+            "In alternativa puoi indicare l'URL diretto di un archivio con "
+            "`DATA_URL = \"https://…/la-pista-data.tar.gz\"`. Se il repository e' "
+            "privato aggiungi anche `DATA_TOKEN = \"ghp_…\"` con permesso di lettura."
+        )
+
+        # --- prova immediata, senza aspettare un redeploy -------------------
+        st.divider()
+        st.markdown("**Prova subito, senza toccare i secrets**")
+        st.caption("Serve a capire se il problema e' la configurazione o l'archivio. "
+                   "Il dataset scaricato cosi' resta finche' il container e' vivo.")
+        c1, c2 = st.columns([3, 1], vertical_alignment="bottom")
+        with c1:
+            manual = st.text_input(
+                "Repository (owner/repo) oppure URL completo dell'archivio",
+                placeholder="tuo-utente/tuo-repository",
+                label_visibility="visible",
+            )
+        with c2:
+            go = st.button("Scarica", width="stretch", type="primary")
+
+        if go and manual.strip():
+            value = manual.strip()
+            is_url = value.startswith(("http://", "https://"))
+            target = value if is_url else storage.release_asset_url(value)
+            st.caption(f"Scarico da: `{target}`")
+            try:
+                with st.spinner("Download in corso…"):
+                    ok = storage.ensure_dataset(
+                        url=target,
+                        token=_secret("DATA_TOKEN") or _secret("GITHUB_TOKEN"),
+                    )
+                if ok:
+                    _fetch_published_dataset.clear()
+                    st.success("Fatto. Ricarica la pagina.", icon="✅")
+                    st.rerun()
+                else:
+                    st.error(f"Archivio scaricato ma incompleto. "
+                             f"Mancano: `{'`, `'.join(storage.missing_panels())}`")
+            except Exception as exc:  # noqa: BLE001 - va mostrato, non loggato
+                st.error(f"**{type(exc).__name__}**: {exc}")
+
+        # --- cosa vede l'app -----------------------------------------------
+        st.divider()
+        with st.expander("Diagnostica: cosa vede l'app", expanded=True):
+            rep = secrets_report()
+            if rep["errore_st_secrets"]:
+                st.error(
+                    "Streamlit non riesce a leggere i secrets:\n\n"
+                    f"`{rep['errore_st_secrets']}`\n\n"
+                    "Se il messaggio parla di sintassi, controlla che ogni riga sia "
+                    "nella forma `CHIAVE = \"valore\"`, virgolette comprese."
+                )
+            keys = rep["chiavi_in_st_secrets"]
+            if keys is None:
+                st.caption("Nessun secret configurato (normale in locale).")
+            elif not keys:
+                st.warning("Streamlit legge i secrets ma **sono vuoti**: la sezione "
+                           "Settings → Secrets dell'app non contiene nulla.", icon="⚠️")
+            else:
+                st.caption(f"Chiavi viste dall'app: `{'`, `'.join(keys)}`")
+
+            st.dataframe(
+                pd.DataFrame(
+                    [{"secret": k, "valore risolto": v} for k, v in rep["valori"].items()]
+                ),
+                width="stretch", hide_index=True,
+            )
+            st.caption("I token sono mascherati di proposito. `DATA_REPO` e `DATA_URL` "
+                       "non sono segreti, quindi si vedono per intero: se qui sono "
+                       "'non impostato', l'app non li sta ricevendo.")
+
         st.info(
-            "Controlla anche che il workflow **Aggiorna dataset** sia arrivato in "
-            "fondo e abbia effettivamente creato la Release: se lo step finale e' "
-            "fallito, l'archivio potrebbe essere solo fra gli artefatti del run, "
-            "che non sono scaricabili da qui.",
+            "Verifica anche che il workflow **Aggiorna dataset** sia arrivato in fondo "
+            "e abbia creato una **Release**. Se lo step finale e' fallito, l'archivio "
+            "esiste solo fra gli *artifacts* del run, che non sono scaricabili "
+            "dall'esterno: in quel caso scaricalo a mano dal run e ripubblicalo, "
+            "oppure rilancia il workflow.",
             icon="ℹ️",
         )
 
