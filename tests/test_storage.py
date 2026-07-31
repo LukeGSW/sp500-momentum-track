@@ -128,6 +128,24 @@ def test_ensure_dataset_senza_sorgente_non_fa_nulla(tmp_path: Path):
     assert storage.ensure_dataset(tmp_path) is False
 
 
+def test_force_riscarica_anche_se_i_dati_ci_sono(tmp_path: Path):
+    """Senza force, una Release nuova non arriverebbe mai a un container che ha
+    gia' scaricato: l'app servirebbe dati vecchi credendoli aggiornati."""
+    vecchio = _make_archive(list(storage.PANELS), {"manifest.json": b'{"built_at":"vecchio"}'})
+    with _Server(vecchio) as url:
+        assert storage.ensure_dataset(tmp_path, url=url)
+    assert storage.load_manifest(tmp_path)["built_at"] == "vecchio"
+
+    nuovo = _make_archive(list(storage.PANELS), {"manifest.json": b'{"built_at":"nuovo"}'})
+    with _Server(nuovo) as url:
+        # senza force il manifest resta quello vecchio
+        assert storage.ensure_dataset(tmp_path, url=url)
+        assert storage.load_manifest(tmp_path)["built_at"] == "vecchio"
+        # con force viene sostituito
+        assert storage.ensure_dataset(tmp_path, url=url, force=True)
+        assert storage.load_manifest(tmp_path)["built_at"] == "nuovo"
+
+
 def test_secrets_toml_con_bom(tmp_path: Path, monkeypatch):
     """Su Windows molti editor scrivono il BOM: non deve rompere la lettura.
 
