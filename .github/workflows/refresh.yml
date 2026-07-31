@@ -36,10 +36,11 @@ jobs:
           missing=0
           for path in app.py requirements.txt track pages pipeline tests \
                       track/features.py track/backtest.py track/study.py \
-                      track/constituents.py track/universe.py \
+                      track/constituents.py track/universe.py track/storage.py \
                       pipeline/build_dataset.py pipeline/verify_data.py \
+                      pipeline/fetch_dataset.py \
                       tests/test_features.py tests/test_backtest.py \
-                      tests/test_constituents.py; do
+                      tests/test_constituents.py tests/test_storage.py; do
             if [ ! -e "$path" ]; then
               echo "::error::MANCANTE nel repository: $path"
               missing=1
@@ -88,6 +89,23 @@ jobs:
           tar -czf ../la-pista-data.tar.gz *.parquet manifest.json
           cd ..
           ls -lh la-pista-data.tar.gz
+          echo "Contenuto dell'archivio:"
+          tar -tzf la-pista-data.tar.gz
+
+      # L'app rifiuta un archivio incompleto: meglio accorgersene qui.
+      - name: Controlla che l'archivio sia completo
+        run: |
+          python - <<'PY'
+          import sys, tarfile
+          from track.storage import PANELS
+          with tarfile.open("la-pista-data.tar.gz") as t:
+              names = set(t.getnames())
+          missing = [f"{p}.parquet" for p in PANELS if f"{p}.parquet" not in names]
+          if missing:
+              print(f"::error::Archivio incompleto, mancano: {', '.join(missing)}")
+              sys.exit(1)
+          print(f"Archivio completo: {len(names)} file.")
+          PY
 
       # Rete di sicurezza: se la Release fallisce, il dataset resta comunque
       # scaricabile dalla pagina del run per 30 giorni invece di andare perso.
