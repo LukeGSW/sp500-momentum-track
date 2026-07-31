@@ -217,6 +217,13 @@ class BacktestResult:
     turnover: pd.Series
     costs: pd.Series            # dollari pagati nel periodo
     cash_weight: pd.Series
+    contributions: pd.DataFrame | None = None
+    """P&L in dollari per titolo e per periodo, se richiesto.
+
+    Serve a risalire dal rendimento anomalo di un mese al titolo che l'ha
+    causato: un +40% mensile su un paniere equipesato non e' un evento di
+    mercato, e' quasi sempre un prezzo sbagliato, ma senza attribuzione non
+    c'e' modo di sapere quale."""
     diagnostics: dict = field(default_factory=dict)
 
     @property
@@ -243,6 +250,7 @@ def run_strategy(
     frictionless: bool = False,
     delisting_haircut: float = 0.0,
     seed: int | None = None,
+    track_contributions: bool = False,
 ) -> BacktestResult:
     """Esegue una strategia sul pannello.
 
@@ -268,12 +276,23 @@ def run_strategy(
     thin_months = 0
     forced_liquidations = 0
 
+    # Attribuzione: opzionale perche' il bootstrap esegue il motore centinaia
+    # di volte e non ha alcun bisogno di sapere chi ha guadagnato cosa.
+    contrib = np.zeros((T, N), dtype="float64") if track_contributions else None
+    prev_px: np.ndarray | None = None
+
     for t in range(T):
         px = panel.open_adj[t]
         px_ff = np.nan_to_num(panel.open_adj_ff[t], nan=0.0)
         raw = panel.open_raw[t]
         alive = panel.alive[t]
         is_dead = t > panel.dead_after  # morto per davvero, non buco temporaneo
+
+        # --- 0. attribuzione del P&L maturato dal periodo precedente --------
+        # Va fatta PRIMA di qualunque movimento: qui `qty` e' ancora quello
+        # detenuto durante l'intervallo [t-1, t].
+        if contrib is not None and prev_px is not None:
+            contrib[t] = qty.sum(axis=0) * (px_ff - prev_px)
 
         # --- 1. il risk-free matura sulla liquidita' di tutte le tranche ----
         cash *= 1.0 + panel.rf_period[t]
@@ -345,6 +364,7 @@ def run_strategy(
         cost_paid[t] = period_cost
         cash_w[t] = float(cash.sum()) / total if total > 0 else 1.0
         turn[t] = traded_notional / total if total > 0 else 0.0
+        prev_px = px_ff
 
     equity = pd.Series(values, index=panel.exec_dates, name=name)
 
@@ -363,6 +383,10 @@ def run_strategy(
         turnover=pd.Series(turn, index=panel.exec_dates),
         costs=pd.Series(cost_paid, index=panel.exec_dates),
         cash_weight=pd.Series(cash_w, index=panel.exec_dates),
+        contributions=(
+            pd.DataFrame(contrib, index=panel.exec_dates, columns=panel.tickers)
+            if contrib is not None else None
+        ),
         diagnostics={
             "capital": cfg.capital,
             "warmup_periods": warmup,
