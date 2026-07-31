@@ -194,7 +194,7 @@ def require_dataset() -> bool:
         )
         st.caption(
             "In alternativa puoi indicare l'URL diretto di un archivio con "
-            "`DATA_URL = \"https://…/la-mappa-data.tar.gz\"`. Se il repository e' "
+            "`DATA_URL = \"https://…/rs-monitor-data.tar.gz\"`. Se il repository e' "
             "privato aggiungi anche `DATA_TOKEN = \"ghp_…\"` con permesso di lettura."
         )
 
