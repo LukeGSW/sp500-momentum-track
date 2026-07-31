@@ -312,6 +312,12 @@ _add("metrics_table", Block(
         "**Max DD** e' la perdita massima da un massimo precedente. **Mesi di "
         "recupero** dice quanto ci e' voluto a tornare in pari: e' la metrica che "
         "determina se una strategia e' tenibile psicologicamente.",
+        "**Posizioni medie** conta i titoli in portafoglio su **tutte le tranche "
+        "insieme**: con 30 titoli e 3 tranche sfalsate il massimo teorico e' 90, "
+        "non 30. Un valore molto sotto quel massimo segnala che la fascia non "
+        "conteneva abbastanza nomi — succede sistematicamente al paniere dei "
+        "leader in ritracciamento, che e' quindi molto meno diversificato degli "
+        "altri e va letto con piu' cautela.",
         "**Turnover** e' la frazione di portafoglio sostituita per "
         "ribilanciamento. **Costo annuo %** e' il drag da commissioni e spread "
         "in percentuale del patrimonio: e' il numero interpretabile. **Costi "
