@@ -193,6 +193,7 @@ def run_study(
     *,
     signals: Signals | None = None,
     delisting_haircut: float = 0.0,
+    track_contributions: bool = False,
 ) -> StudyResult:
     sig = signals or compute_signals(ds, cfg)
     panel = build_panel(ds, sig, cfg)
@@ -208,6 +209,7 @@ def run_study(
             panel, sel, cfg, name=name,
             frictionless=frictionless,
             delisting_haircut=delisting_haircut,
+            track_contributions=track_contributions,
         )
 
     rows = {}
@@ -284,6 +286,51 @@ def cost_sensitivity(
             P_TOP: mt.get("CAGR", np.nan),
             P_BOTTOM: mb.get("CAGR", np.nan),
             "Differenza": mt.get("CAGR", np.nan) - mb.get("CAGR", np.nan),
+        })
+    return pd.DataFrame(rows)
+
+
+def filter_decomposition(ds: Dataset, cfg: TrackConfig) -> pd.DataFrame:
+    """Il 2x2: filtro sulla media mobile acceso/spento x paniere.
+
+    E' l'unico modo per rispondere alla domanda che conta davvero una volta
+    misurato il risultato aggregato: **quanto viene dall'ESCLUSIONE dei titoli
+    sotto la media a 200 sedute, e quanto dalla SELEZIONE per fascia?**
+
+    Il filtro non e' neutrale: e' esso stesso una scommessa sul momentum. Con
+    il filtro acceso la domanda dello studio smette di essere "momentum o
+    debolezza" e diventa "leader o ritracciamento dentro un trend". Separare i
+    due effetti trasforma un confondimento in un risultato.
+    """
+    rows = []
+    for filtro in (True, False):
+        c = replace(cfg, sma_filter=filtro)
+        sig = compute_signals(ds, c)
+        res = run_study(ds, c, signals=sig)
+        elig = sig.eligible.reindex(res.panel.decision_dates).sum(axis=1)
+
+        for name in PORTFOLIO_ORDER:
+            if name not in res.results:
+                continue
+            m = bt.performance_metrics(res.results[name], res.rf_period)
+            rows.append({
+                "Filtro media mobile": "attivo" if filtro else "spento",
+                "Paniere": name,
+                "CAGR": m.get("CAGR"),
+                "Vol": m.get("Vol annua"),
+                "Sharpe": m.get("Sharpe"),
+                "Max DD": m.get("Max DD"),
+                "Universo medio": float(elig.mean()),
+            })
+        rows.append({
+            "Filtro media mobile": "attivo" if filtro else "spento",
+            "Paniere": "Spread Testa − Fondo",
+            "CAGR": (bt.performance_metrics(res.results[P_TOP], res.rf_period).get("CAGR", np.nan)
+                     - bt.performance_metrics(res.results[P_BOTTOM], res.rf_period).get("CAGR", np.nan)),
+            "Vol": np.nan,
+            "Sharpe": np.nan,
+            "Max DD": np.nan,
+            "Universo medio": float(elig.mean()),
         })
     return pd.DataFrame(rows)
 
