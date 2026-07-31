@@ -290,13 +290,34 @@ def require_dataset() -> bool:
 
 
 def demo_banner(ds: study.Dataset) -> None:
-    if ds.is_demo:
-        st.warning(
-            "**Dati sintetici.** Questo dataset e' generato casualmente per provare "
-            "l'interfaccia: ogni numero che vedi e' finto. Esegui "
-            "`python -m pipeline.build_dataset` per i dati reali EODHD.",
-            icon="⚠️",
+    """Avvisa se i dati sono sintetici, dicendo QUALE dataset e' caricato.
+
+    Sapere che i numeri sono finti non basta: serve sapere da dove viene il
+    dataset in uso e quando e' stato costruito, altrimenti non si capisce come
+    ci sia finito ne' come sostituirlo.
+    """
+    if not ds.is_demo:
+        return
+
+    st.warning(
+        "**Dati sintetici: ogni numero in questa pagina e' finto.**\n\n"
+        f"Dataset caricato — fonte: `{ds.source}`, costruito il `{ds.built_at}`.\n\n"
+        "Se ti aspettavi i dati reali, il container ha ricaricato un archivio "
+        "sbagliato oppure `data/` contiene ancora un dataset di prova.",
+        icon="⚠️",
+    )
+    with st.expander("Come sostituirlo con i dati reali"):
+        st.markdown(
+            "**Sul deploy** — vai in *Diagnostica* e premi **Riscarica dataset**: "
+            "forza il download dell'ultima Release ignorando quello gia' presente. "
+            "Verifica poi che `DATA_REPO` punti al repository giusto e che il "
+            "workflow *Aggiorna dataset* abbia pubblicato una Release."
         )
+        st.markdown("**In locale** — rigenera i dati veri:")
+        st.code("python -m pipeline.build_dataset", language="bash")
+        st.caption("Oppure scarica quelli gia' pubblicati dalla pipeline:")
+        st.code("python -m pipeline.fetch_dataset --repo tuo-utente/tuo-repository --force",
+                language="bash")
 
 
 def header(page_name: str, ds: study.Dataset | None = None) -> None:
