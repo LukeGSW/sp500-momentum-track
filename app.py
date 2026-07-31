@@ -1,5 +1,5 @@
 """
-La Pista — pagina principale.
+Monitor di Forza Relativa — pagina principale.
 
 Dove si trova oggi ogni titolo dell'S&P 500 lungo un asse verticale di forza
 relativa, e in che direzione si sta muovendo.
@@ -12,7 +12,7 @@ import streamlit as st
 from track import analysis, didactics, plotting, study, ui
 from track.config import BAND_NAMES, GICS_SECTORS
 
-ui.page_config("La Pista")
+ui.page_config("Monitor di Forza Relativa")
 
 if not ui.require_dataset():
     st.stop()
@@ -21,14 +21,14 @@ cfg = ui.sidebar_config()
 ds = ui.get_dataset()
 sig = ui.get_signals(cfg)
 
-ui.header("La Pista", ds)
+ui.header("Monitor di Forza Relativa", ds)
 
 st.markdown(
     """
 Ogni pallino e' un titolo. **In alto i forti, in basso i deboli** — misurati in
 modo relativo rispetto a tutti gli altri, non in valore assoluto. Le undici
 colonne sono i settori GICS. Il momentum **non e' un secondo asse**: e' la
-pendenza della scia, cioe' il movimento verticale del titolo nelle settimane
+pendenza della traiettoria, cioe' il movimento verticale del titolo nelle settimane
 precedenti.
 """
 )
@@ -48,14 +48,14 @@ with c1:
         options=list(valid_dates),
         value=valid_dates[-1],
         format_func=lambda d: pd.Timestamp(d).strftime("%d %b %Y"),
-        help="Trascina per far scorrere la pista nel tempo e vedere come si "
+        help="Trascina per far scorrere la mappa nel tempo e vedere come si "
              "riordinano i titoli.",
     )
 with c2:
     x_mode_label = st.segmented_control(
-        "Asse orizzontale", ["Settori", "Spinta"], default="Settori",
-        help="'Settori' mostra 11 corsie GICS e rende visibile la rotazione "
-             "settoriale. 'Spinta' mette la velocita' sull'asse x.",
+        "Asse orizzontale", ["Settori", "RS Slope"], default="Settori",
+        help="'Settori' mostra 11 colonne settoriali GICS e rende visibile la rotazione "
+             "settoriale. 'RS Slope' mette la velocita' sull'asse x.",
     ) or "Settori"
 x_mode = "sector" if x_mode_label == "Settori" else "velocity"
 
@@ -85,15 +85,15 @@ k1, k2, k3, k4, k5 = st.columns(5)
 k1.metric("Titoli eleggibili", f"{len(snapshot)}",
           help="Nell'indice, con storia sufficiente, sotto il cap di prezzo e "
                "(se attivo) sopra la media a 200 sedute.")
-k2.metric("In Testa Corsa", f"{int((snapshot['band_label'] == 'Testa Corsa').sum())}",
+k2.metric("In Q5 Leader", f"{int((snapshot['band_label'] == 'Q5 Leader').sum())}",
           help="Il quintile piu' forte alla data selezionata.")
-k3.metric("In Fondo Griglia", f"{int((snapshot['band_label'] == 'Fondo Griglia').sum())}",
+k3.metric("In Q1 Laggard", f"{int((snapshot['band_label'] == 'Q1 Laggard').sum())}",
           help="Il quintile piu' debole fra gli eleggibili.")
 salgono = int((snapshot["movimento"] == "sale").sum())
-k4.metric("In risalita sulla pista", f"{salgono}",
+k4.metric("In risalita sulla mappa", f"{salgono}",
           delta=f"{salgono / max(len(snapshot), 1):.0%} del campo",
           help="Titoli che hanno guadagnato almeno una fascia nell'ultimo mese.")
-k5.metric("Spinta mediana", f"{snapshot['V'].median():+.2f}",
+k5.metric("RS Slope mediano", f"{snapshot['V'].median():+.2f}",
           help="Segno positivo: il campo nel suo insieme sta accelerando.")
 
 if len(snapshot) < cfg.min_eligible:
@@ -120,15 +120,15 @@ with f2:
         "Evidenzia il paniere",
         ["nessuno", study.P_TOP, study.P_BOTTOM, study.P_PULLBACK, study.P_MID],
         index=1,
-        help="Cerchia sulla pista i titoli che quel paniere comprerebbe oggi, e ne "
-             "disegna le scie. Un paniere alla volta: quattro anelli sovrapposti "
+        help="Cerchia sulla mappa i titoli che quel paniere comprerebbe oggi, e ne "
+             "disegna le traiettorie. Un paniere alla volta: quattro anelli sovrapposti "
              "non comunicano nulla.",
     )
 with f3:
     trail_choice = st.multiselect(
-        "Aggiungi la scia di…", sorted(snapshot["ticker"].tolist()), default=[],
+        "Aggiungi la traiettoria di…", sorted(snapshot["ticker"].tolist()), default=[],
         placeholder="titoli da tracciare singolarmente",
-        help="Con centinaia di titoli tutte le scie insieme sono illeggibili.",
+        help="Con centinaia di titoli tutte le traiettorie insieme sono illeggibili.",
     )
 
 # solo il paniere selezionato viene cerchiato sul grafico
@@ -148,11 +148,11 @@ ui.chart(
         view, trails, band_names=BAND_NAMES, n_bands=cfg.n_bands,
         x_mode=x_mode, highlight=set(trail_choice),
         portfolio_label=highlight_pf if highlight_pf != "nessuno" else "In portafoglio",
-        title=f"La Pista — {pd.Timestamp(as_of).strftime('%d %B %Y')}",
+        title=f"Monitor di Forza Relativa — {pd.Timestamp(as_of).strftime('%d %B %Y')}",
     ),
     key="track",
 )
-didactics.render("pista", expanded=True)
+didactics.render("mappa", expanded=True)
 didactics.render("velocita")
 
 st.divider()
@@ -185,10 +185,10 @@ st.dataframe(
         "ticker": st.column_config.TextColumn("Ticker", width="small"),
         "name": st.column_config.TextColumn("Societa'"),
         "sector": st.column_config.TextColumn("Settore"),
-        "F": st.column_config.NumberColumn("Forza F", format="%.2f",
+        "F": st.column_config.NumberColumn("RS Score", format="%.2f",
                                            help="z-score trasversale: 0 = titolo mediano"),
-        "V": st.column_config.NumberColumn("Spinta V", format="%.2f",
-                                           help="pendenza della scia, standardizzata"),
+        "V": st.column_config.NumberColumn("RS Slope", format="%.2f",
+                                           help="pendenza della traiettoria, standardizzata"),
         "band_label": st.column_config.TextColumn("Fascia"),
         "band_prev_label": st.column_config.TextColumn("Fascia 1 mese fa"),
         "movimento": st.column_config.TextColumn("Movimento", width="small"),
@@ -205,7 +205,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Dinamica storica
 # ---------------------------------------------------------------------------
-st.subheader("Come si muovono i titoli lungo la pista")
+st.subheader("Come si muovono i titoli lungo la mappa")
 st.caption(
     "Queste due viste rispondono a meta' della domanda dello studio **prima** del "
     "backtest: misurano se la forza relativa e' un fenomeno persistente o se le "
