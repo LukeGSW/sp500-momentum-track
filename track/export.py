@@ -135,6 +135,38 @@ CAVEAT_LIBRARY: list[dict[str, str]] = [
         "mitigation": "conteggio mensile degli esclusi nella diagnostica",
     },
     {
+        "id": "excluded_series",
+        "description": (
+            "Alcune serie prezzi con errori accertati sono state escluse dallo studio "
+            "prima di qualunque calcolo. L'elenco completo, con motivo e finestra "
+            "temporale, e' in `data_provenance.exclusions_applied` e nel file "
+            "versionato `exclusions.csv`. Caso di riferimento: RAI (Reynolds "
+            "American), la cui fusione del luglio 2004 non e' gestita nel fattore di "
+            "rettifica e produceva da sola un +41,8% mensile fittizio."
+        ),
+        "direction_of_bias": (
+            "le serie corrotte producono un crollo spurio che le colloca nella fascia "
+            "piu' debole, e la successiva ripresa spuria ne gonfia il rendimento: "
+            "senza esclusione il bias favorisce la tesi contrarian"
+        ),
+        "mitigation": "esclusioni versionate nel repository, applicate dalla pipeline "
+                      "e dichiarate nell'export; finestre strette invece di serie intere",
+    },
+    {
+        "id": "post_hoc_data_cleaning",
+        "description": (
+            "Le esclusioni sono state individuate ESAMINANDO i risultati (mesi con "
+            "rendimenti implausibili), non dichiarate in anticipo. E' pulizia "
+            "legittima quando l'errore e' verificabile, ma resta una scelta "
+            "post-hoc: un risultato significativo ottenuto dopo aver rimosso dati "
+            "scelti guardando quegli stessi dati vale meno di uno preregistrato."
+        ),
+        "direction_of_bias": "tende a rafforzare qualunque conclusione si stia cercando",
+        "mitigation": "ogni esclusione ha un motivo verificabile indipendentemente dai "
+                      "risultati (un evento societario documentato, non 'peggiora la "
+                      "performance'); riportare sempre i risultati con e senza",
+    },
+    {
         "id": "ticker_reuse",
         "description": (
             "Simboli come C, GM, K sono stati riassegnati a societa' diverse. Le "
