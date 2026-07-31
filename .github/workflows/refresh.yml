@@ -19,8 +19,38 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
+    # Necessario per creare la Release: dal 2023 il GITHUB_TOKEN dei repository
+    # nuovi ha permessi di sola lettura, e lo step finale fallirebbe con 403
+    # dopo aver gia' consumato tutte le chiamate API.
+    permissions:
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
+
+      # Un caricamento manuale incompleto (tipico con l'uploader web di GitHub,
+      # che nasconde le cartelle col punto) altrimenti si manifesta piu' avanti
+      # con errori poco leggibili. Meglio dirlo subito e per nome.
+      - name: Verifica struttura del repository
+        run: |
+          missing=0
+          for path in app.py requirements.txt track pages pipeline tests \
+                      track/features.py track/backtest.py track/study.py \
+                      pipeline/build_dataset.py pipeline/verify_data.py \
+                      tests/test_features.py tests/test_backtest.py; do
+            if [ ! -e "$path" ]; then
+              echo "::error::MANCANTE nel repository: $path"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo ""
+            echo "Alcuni file non sono stati caricati su GitHub."
+            echo "Contenuto attuale della radice del repository:"
+            ls -la
+            exit 1
+          fi
+          echo "Struttura del repository completa."
 
       - uses: actions/setup-python@v5
         with:
@@ -51,6 +81,15 @@ jobs:
           tar -czf ../la-pista-data.tar.gz *.parquet manifest.json
           cd ..
           ls -lh la-pista-data.tar.gz
+
+      # Rete di sicurezza: se la Release fallisce, il dataset resta comunque
+      # scaricabile dalla pagina del run per 30 giorni invece di andare perso.
+      - name: Salva come artefatto del run
+        uses: actions/upload-artifact@v4
+        with:
+          name: la-pista-data
+          path: la-pista-data.tar.gz
+          retention-days: 30
 
       - name: Pubblica come Release
         uses: softprops/action-gh-release@v2
