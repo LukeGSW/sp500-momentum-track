@@ -152,7 +152,15 @@ def missing_panels(directory: str | Path | None = None) -> list[str]:
 # ---------------------------------------------------------------------------
 # Recupero del dataset pubblicato come Release
 # ---------------------------------------------------------------------------
-DEFAULT_ASSET = "la-mappa-data.tar.gz"
+DEFAULT_ASSET = "rs-monitor-data.tar.gz"
+
+LEGACY_ASSETS: tuple[str, ...] = ("la-pista-data.tar.gz",)
+"""Nomi usati da Release pubblicate prima della rinomina.
+
+Provati in coda a quello corrente: un archivio gia' pubblicato resta
+scaricabile senza dover rilanciare la pipeline. Il nome dell'asset e' un
+contratto fra workflow e app, e cambiarlo senza compatibilita' produce un 404
+che sembra un problema di configurazione ma non lo e'."""
 
 
 def release_asset_url(repo: str, asset: str = DEFAULT_ASSET) -> str:
@@ -179,7 +187,7 @@ def download_and_extract(
     import requests
 
     dest = data_dir(directory)
-    headers = {"User-Agent": "la-mappa/1.0"}
+    headers = {"User-Agent": "rs-monitor/1.0"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
@@ -245,6 +253,29 @@ def ensure_dataset(
     if not url and not repo:
         return False
 
-    target = url or release_asset_url(repo, asset)  # type: ignore[arg-type]
-    download_and_extract(target, directory, token)
-    return dataset_available(directory)
+    if url:
+        candidati = [url]
+    else:
+        # nome corrente per primo, poi quelli storici
+        candidati = [release_asset_url(repo, a)  # type: ignore[arg-type]
+                     for a in (asset, *LEGACY_ASSETS)]
+
+    fallimenti: list[str] = []
+    for target in candidati:
+        try:
+            download_and_extract(target, directory, token)
+            log.info("dataset scaricato da %s", target)
+            return dataset_available(directory)
+        except FileNotFoundError as exc:
+            fallimenti.append(str(exc).splitlines()[0])
+            continue
+
+    raise FileNotFoundError(
+        "Nessun archivio trovato. URL provati:\n  "
+        + "\n  ".join(candidati)
+        + "\n\nGitHub risponde 404 in quattro casi, tutti verificabili in un minuto:\n"
+        "  1. il repository non ha ancora nessuna Release pubblicata\n"
+        "  2. la Release esiste ma e' una bozza (draft): va pubblicata\n"
+        "  3. il nome dell'asset e' diverso da quelli attesi\n"
+        "  4. il repository e' privato e manca il token di lettura"
+    )
