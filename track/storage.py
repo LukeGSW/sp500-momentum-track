@@ -21,7 +21,9 @@ DEFAULT_DATA_DIR = REPO_ROOT / "data"
 
 MANIFEST_NAME = "manifest.json"
 
-# Pannelli attesi dall'app.
+# Tutto cio' che `study.load_dataset` si aspetta di trovare. Serve anche a
+# riconoscere un archivio troncato: senza `meta` o `risk_free` l'app
+# fallirebbe piu' avanti con un errore molto meno chiaro.
 PANELS = (
     "close_adj",
     "open_adj",
@@ -31,6 +33,8 @@ PANELS = (
     "velocity",
     "bands",
     "eligible",
+    "meta",
+    "risk_free",
 )
 
 
@@ -38,6 +42,44 @@ def data_dir(override: str | Path | None = None) -> Path:
     p = Path(override) if override else DEFAULT_DATA_DIR
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+# ---------------------------------------------------------------------------
+def read_secret(name: str) -> str | None:
+    """Legge un segreto da ambiente o da un secrets.toml, senza Streamlit.
+
+    Streamlit cerca `secrets.toml` a partire dalla directory di LAVORO, non da
+    quella dello script: lanciando `streamlit run /percorso/assoluto/app.py` da
+    un'altra cartella il file del progetto viene ignorato senza avvisi. Qui
+    guardiamo entrambe le posizioni, cosi' il comportamento in locale non
+    dipende da dove ci si trova.
+
+    Su Streamlit Cloud i segreti arrivano dalla piattaforma e questa funzione
+    non serve: e' `st.secrets` a risolverli, e viene provata per prima.
+    """
+    import os
+    import tomllib
+
+    val = os.environ.get(name, "").strip()
+    if val:
+        return val
+
+    for candidate in (
+        Path.cwd() / ".streamlit" / "secrets.toml",
+        REPO_ROOT / ".streamlit" / "secrets.toml",
+    ):
+        try:
+            if candidate.exists():
+                # utf-8-sig, non utf-8: su Windows molti editor (e PowerShell
+                # con -Encoding utf8) scrivono il BOM, che tomllib rifiuta con
+                # un "Invalid statement at line 1, column 1" incomprensibile.
+                data = tomllib.loads(candidate.read_text(encoding="utf-8-sig"))
+                val = str(data.get(name, "")).strip()
+                if val:
+                    return val
+        except (OSError, ValueError) as exc:
+            log.warning("secrets.toml illeggibile in %s: %s", candidate, exc)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -105,3 +147,89 @@ def dataset_available(directory: str | Path | None = None) -> bool:
 def missing_panels(directory: str | Path | None = None) -> list[str]:
     d = data_dir(directory)
     return [n for n in PANELS if not (d / f"{n}.parquet").exists()]
+
+
+# ---------------------------------------------------------------------------
+# Recupero del dataset pubblicato come Release
+# ---------------------------------------------------------------------------
+DEFAULT_ASSET = "la-pista-data.tar.gz"
+
+
+def release_asset_url(repo: str, asset: str = DEFAULT_ASSET) -> str:
+    """URL stabile dell'asset dell'ultima Release.
+
+    Questa forma viene redirezionata da GitHub alla Release piu' recente senza
+    passare dalle API: evita il limite di 60 richieste/ora per IP non
+    autenticate, che su un hosting condiviso come Streamlit Cloud si esaurisce
+    in fretta.
+    """
+    return f"https://github.com/{repo.strip('/')}/releases/latest/download/{asset}"
+
+
+def download_and_extract(
+    url: str,
+    directory: str | Path | None = None,
+    token: str | None = None,
+    timeout: int = 300,
+) -> list[str]:
+    """Scarica un .tar.gz e lo estrae nella cartella dati. Ritorna i file estratti."""
+    import tarfile
+    import tempfile
+
+    import requests
+
+    dest = data_dir(directory)
+    headers = {"User-Agent": "la-pista/1.0"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    log.info("scarico il dataset da %s", url)
+    resp = requests.get(url, headers=headers, timeout=timeout,
+                        allow_redirects=True, stream=True)
+    if resp.status_code == 404:
+        raise FileNotFoundError(
+            f"Nessun asset trovato a {url}. Verifica che il workflow abbia "
+            "pubblicato una Release e che il nome dell'archivio coincida."
+        )
+    resp.raise_for_status()
+
+    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+        for chunk in resp.iter_content(chunk_size=1 << 20):
+            tmp.write(chunk)
+        tmp_path = Path(tmp.name)
+
+    try:
+        with tarfile.open(tmp_path, "r:gz") as tar:
+            # filter="data" blocca path traversal e link simbolici: l'archivio
+            # arriva dalla rete e non va estratto alla cieca.
+            tar.extractall(dest, filter="data")
+            names = tar.getnames()
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    log.info("estratti %d file in %s", len(names), dest)
+    return names
+
+
+def ensure_dataset(
+    directory: str | Path | None = None,
+    *,
+    url: str | None = None,
+    repo: str | None = None,
+    asset: str = DEFAULT_ASSET,
+    token: str | None = None,
+) -> bool:
+    """Se i pannelli mancano, prova a scaricarli. Ritorna True se ci sono.
+
+    Serve al deploy: l'app non costruisce mai il dataset (richiederebbe la
+    chiave API e minuti di download), ma puo' recuperare quello gia' costruito
+    dalla pipeline e pubblicato come Release.
+    """
+    if dataset_available(directory):
+        return True
+    if not url and not repo:
+        return False
+
+    target = url or release_asset_url(repo, asset)  # type: ignore[arg-type]
+    download_and_extract(target, directory, token)
+    return dataset_available(directory)
