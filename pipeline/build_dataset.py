@@ -217,6 +217,10 @@ def main(argv: list[str] | None = None) -> int:
     if excl_report:
         applicate = sum(1 for r in excl_report if r.get("applicata"))
         log.info("     %d esclusioni applicate su %d dichiarate", applicate, len(excl_report))
+    else:
+        log.warning("     NESSUNA esclusione applicata: il dataset conterra' anche le "
+                    "serie con errori di dato. Esegui  python -m pipeline.find_bad_series  "
+                    "dopo la costruzione per individuarle.")
 
     membership = universe.build_membership(const, calendar)
     membership = membership.reindex(columns=close_adj.columns, fill_value=False)
