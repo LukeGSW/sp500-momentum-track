@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
+from track import constituents as ct
 from track import features as ft
 from track import storage, universe
 from track.config import PREREGISTERED, TrackConfig
@@ -142,6 +143,15 @@ def main(argv: list[str] | None = None) -> int:
                         help="scarica solo i primi N ticker (per prove rapide)")
     parser.add_argument("--data-dir", default=None)
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--constituents-source", choices=[ct.SOURCE_GITHUB, ct.SOURCE_EODHD],
+                        default=ct.SOURCE_GITHUB,
+                        help="'github' (predefinita): ricostruzione MIT dal 1996, nessuna "
+                             "entitlement richiesta. 'eodhd': endpoint sugli indici, dal 2000, "
+                             "incluso solo in alcuni piani.")
+    parser.add_argument("--enrich-sectors", action="store_true",
+                        help="recupera i settori delle societa' uscite dall'indice dai "
+                             "Fundamentals EODHD per singolo titolo (~700 chiamate in piu', "
+                             "una volta sola). Senza, restano 'Non classificato'.")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s %(message)s")
@@ -149,8 +159,11 @@ def main(argv: list[str] | None = None) -> int:
 
     client = EODHDClient(resolve_api_key(), max_workers=args.workers)
 
-    log.info("1/6  costituenti storici GSPC.INDX ...")
-    raw_const = client.historical_constituents()
+    log.info("1/6  costituenti storici (fonte: %s) ...", args.constituents_source)
+    raw_const = ct.load_constituents(args.constituents_source, client=client,
+                                     cache_dir=args.data_dir)
+    if args.enrich_sectors:
+        raw_const = ct.enrich_sectors_from_eodhd(raw_const, client)
     const = universe.normalize_constituents(raw_const)
     log.info("     %d record, %d codici distinti, dal %s",
              len(const), const["code"].nunique(), const["start_date"].min().date())
@@ -195,11 +208,22 @@ def main(argv: list[str] | None = None) -> int:
     anomalies = universe.price_anomalies(close_adj)
     reused = sorted(const.loc[const["ticker_reuse_suspect"], "code"].unique().tolist())
 
+    n_unclassified = int((sectors == "Non classificato").sum())
     provenance = {
-        "source": "EODHD",
+        "source": "EODHD (prezzi)",
+        "constituents_source": args.constituents_source,
+        "constituents_source_note": (
+            "fja05680/sp500, licenza MIT: RICOSTRUZIONE di terze parti, non dato "
+            "ufficiale S&P. Tratto 1996-2019 dal dataset di 'Trading Evolved' "
+            "(Clenow), successivo dal tracciamento Wikipedia."
+            if args.constituents_source == ct.SOURCE_GITHUB
+            else "EODHD fundamentals/GSPC.INDX HistoricalTickerComponents"
+        ),
         "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "config_hash": cfg.hash(),
         "calendar_symbol": CALENDAR_SYMBOL,
+        "sectors_known": int(len(sectors) - n_unclassified),
+        "sectors_unclassified": n_unclassified,
         "first_data_date": str(calendar.min().date()),
         "last_data_date": str(calendar.max().date()),
         "constituents_records": int(len(const)),
