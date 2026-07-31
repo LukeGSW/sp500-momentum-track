@@ -37,10 +37,13 @@ jobs:
           for path in app.py requirements.txt track pages pipeline tests \
                       track/features.py track/backtest.py track/study.py \
                       track/constituents.py track/universe.py track/storage.py \
+                      track/analysis.py track/didactics.py track/ui.py \
                       pipeline/build_dataset.py pipeline/verify_data.py \
                       pipeline/fetch_dataset.py \
+                      tests/__init__.py \
                       tests/test_features.py tests/test_backtest.py \
-                      tests/test_constituents.py tests/test_storage.py; do
+                      tests/test_constituents.py tests/test_storage.py \
+                      tests/test_attribution.py; do
             if [ ! -e "$path" ]; then
               echo "::error::MANCANTE nel repository: $path"
               missing=1
