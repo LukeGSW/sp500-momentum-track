@@ -33,8 +33,9 @@ jobs:
       # con errori poco leggibili. Meglio dirlo subito e per nome.
       - name: Verifica struttura del repository
         run: |
+          # OBBLIGATORI: senza questi la pipeline non puo' partire.
           missing=0
-          for path in app.py requirements.txt exclusions.csv track pages pipeline tests \
+          for path in app.py requirements.txt track pages pipeline tests \
                       track/features.py track/backtest.py track/study.py \
                       track/constituents.py track/universe.py track/storage.py \
                       track/analysis.py track/didactics.py track/ui.py \
@@ -56,6 +57,17 @@ jobs:
             echo "Contenuto attuale della radice del repository:"
             ls -la
             exit 1
+          fi
+
+          # ATTESI ma non bloccanti: il codice li tollera assenti. Far fallire
+          # una pipeline da 90 minuti per un file opzionale sarebbe sbagliato,
+          # ma la sua assenza cambia i risultati e va detta a voce alta.
+          if [ ! -e exclusions.csv ]; then
+            echo "::warning::exclusions.csv assente: il dataset verra' costruito SENZA"
+            echo "::warning::escludere le serie prezzi con errori accertati (es. RAI)."
+            echo "::warning::I risultati conterranno i mesi anomali. Caricalo e rilancia."
+          else
+            echo "exclusions.csv presente: $(grep -vc '^#' exclusions.csv) righe (header incluso)."
           fi
           echo "Struttura del repository completa."
 
