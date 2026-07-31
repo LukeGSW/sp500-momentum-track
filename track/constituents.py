@@ -66,7 +66,7 @@ def _download(name: str, cache: Path | None, force: bool = False) -> bytes:
 
     url = GITHUB_BASE + requests.utils.quote(name)
     log.info("scarico %s", url)
-    resp = requests.get(url, timeout=90, headers={"User-Agent": "la-mappa/1.0"})
+    resp = requests.get(url, timeout=90, headers={"User-Agent": "rs-monitor/1.0"})
     resp.raise_for_status()
 
     if cache is not None:
