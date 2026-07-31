@@ -86,7 +86,7 @@ class EODHDClient:
         self.timeout = timeout
         self._limiter = _RateLimiter(per_minute)
         self._session = requests.Session()
-        self._session.headers.update({"User-Agent": "la-mappa/1.0"})
+        self._session.headers.update({"User-Agent": "rs-monitor/1.0"})
 
     # ------------------------------------------------------------------ core
     def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
