@@ -109,6 +109,35 @@ def load_exclusions(path: str | Path | None = None) -> list[Exclusion]:
     return out
 
 
+def exclusions_manifest(path: str | Path | None = None) -> dict:
+    """Cosa la pipeline ha REALMENTE letto: percorso, righe, ticker, impronta.
+
+    Senza questo, un file non caricato e un file caricato ma vuoto producono
+    lo stesso identico manifest, e non c'e' modo di distinguerli a posteriori.
+    """
+    import hashlib
+
+    if path is not None and str(path).strip().upper() == "NONE":
+        return {"file": "NONE", "esiste": False, "disattivate": True,
+                "righe": 0, "ticker": [], "impronta": None}
+
+    p = Path(path) if path else DEFAULT_FILE
+    if not p.exists():
+        return {"file": str(p), "esiste": False, "disattivate": False,
+                "righe": 0, "ticker": [], "impronta": None}
+
+    raw = p.read_bytes()
+    lista = load_exclusions(p)
+    return {
+        "file": str(p),
+        "esiste": True,
+        "disattivate": False,
+        "righe": len(lista),
+        "ticker": sorted({e.ticker for e in lista}),
+        "impronta": hashlib.sha256(raw).hexdigest()[:12],
+    }
+
+
 def apply_exclusions(
     panels: dict[str, pd.DataFrame],
     exclusions: list[Exclusion],
