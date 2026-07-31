@@ -1,0 +1,47 @@
+{
+  "source": "DATI SINTETICI (demo)",
+  "exclusions_applied": [
+    {
+      "ticker": "RAI",
+      "reason": "Reynolds American: fusione R.J. Reynolds / Brown & Williamson efficace il 30-07-2004. Il concambio non e' gestito nel fattore di rettifica; la serie produce un +41,8% mensile fittizio sul paniere Testa Corsa (agosto 2004), pari al 110% del P&L di quel mese.",
+      "applicata": false,
+      "osservazioni_rimosse": 0,
+      "nota": "ticker assente dal dataset"
+    },
+    {
+      "ticker": "RRD",
+      "reason": "R.R. Donnelley & Sons: la serie rettificata produce un movimento di ordini di grandezza in gennaio 2002. Attribuzione: 63.433 USD di P&L su un paniere di ~800 posizioni da poche centinaia di dollari ciascuna, pari al 97,2% del mese e a un +64,6% sull'universo eleggibile. Impossibile come evento societario; firma tipica del prezzo rettificato che collassa verso zero e rimbalza. VERIFICARE con find_bad_series se l'intervallo sospetto e' piu' ampio di questa finestra.",
+      "applicata": false,
+      "osservazioni_rimosse": 0,
+      "nota": "ticker assente dal dataset"
+    }
+  ],
+  "exclusions_count": 0,
+  "built_at": "2026-07-31T17:28:19Z",
+  "config_hash": "60687f2b3f65",
+  "first_data_date": "2013-01-02",
+  "last_data_date": "2026-07-31",
+  "constituents_distinct_codes": 143,
+  "constituents_coverage_start": "2013-01-02",
+  "coverage_mean": 1.0,
+  "coverage_min": 1.0,
+  "coverage_by_year": {
+    "2013": 1.0,
+    "2014": 1.0,
+    "2015": 1.0,
+    "2016": 1.0,
+    "2017": 1.0,
+    "2018": 1.0,
+    "2019": 1.0,
+    "2020": 1.0,
+    "2021": 1.0,
+    "2022": 1.0,
+    "2023": 1.0,
+    "2024": 1.0,
+    "2025": 1.0,
+    "2026": 1.0
+  },
+  "risk_free_source": "sintetico",
+  "ticker_reuse_suspects": [],
+  "demo_data": true
+}
