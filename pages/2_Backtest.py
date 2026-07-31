@@ -71,6 +71,29 @@ if cfg.hash() != PREREGISTERED.hash():
         "trarre inferenze.", icon="🧪",
     )
 
+# Un paniere che quasi mai raggiunge la dimensione prevista non e' confrontabile
+# con gli altri: va detto sopra, non lasciato dedurre da una colonna.
+_max_pos = cfg.n_names * cfg.n_tranches
+_thin = {
+    name: r.diagnostics.get("mesi_paniere_incompleto", 0)
+    for name, r in res.results.items()
+    if name != study.P_UNIVERSE
+    and r.diagnostics.get("mesi_paniere_incompleto", 0) > 0.5 * res.panel.n_periods
+}
+if _thin:
+    righe = "\n".join(
+        f"- **{n}**: paniere incompleto in {v}/{res.panel.n_periods} ribilanciamenti "
+        f"(posizioni medie {m.loc[n, 'Posizioni medie']:.0f} su {_max_pos} teoriche)"
+        for n, v in _thin.items() if n in m.index
+    )
+    st.warning(
+        "**Panieri sistematicamente sotto-dimensionati.**\n\n" + righe +
+        "\n\nLa fascia non conteneva abbastanza titoli che soddisfacessero il "
+        "criterio. Questi panieri sono meno diversificati degli altri, quindi piu' "
+        "volatili e piu' rumorosi: il confronto con gli altri non e' alla pari.",
+        icon="⚠️",
+    )
+
 tab_res, tab_rob, tab_dati = st.tabs(
     ["Risultato", "Robustezza e inferenza", "Costi, dati e orizzonti"]
 )
