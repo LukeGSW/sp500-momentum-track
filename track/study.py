@@ -221,16 +221,22 @@ def run_study(
     common = top_r.index.intersection(bot_r.index)
     spread = (top_r.loc[common] - bot_r.loc[common]).rename("Spread Testa - Fondo")
 
+    # L'universo va misurato SOLO alle date di decisione e SOLO dentro il
+    # periodo di backtest: mediarlo su tutte le sedute includerebbe il warm-up
+    # iniziale, dove nessun titolo ha ancora storia sufficiente e il conteggio
+    # e' zero per costruzione.
+    elig_at_decision = sig.eligible.reindex(panel.decision_dates).sum(axis=1)
+
     diagnostics = {
         "periodi": int(panel.n_periods),
         "primo_ribilanciamento": str(panel.exec_dates.min().date()) if panel.n_periods else None,
         "ultimo_ribilanciamento": str(panel.exec_dates.max().date()) if panel.n_periods else None,
-        "universo_eleggibile_medio": float(sig.eligible.sum(axis=1).mean()),
-        "universo_eleggibile_minimo": int(sig.eligible.sum(axis=1).min()),
-        "mesi_sotto_soglia_minima": int(
-            (sig.eligible.loc[sig.eligible.index >= cfg.backtest_start].sum(axis=1)
-             < cfg.min_eligible).sum()
-        ),
+        "universo_eleggibile_medio": float(elig_at_decision.mean()),
+        "universo_eleggibile_minimo": int(elig_at_decision.min()),
+        "universo_eleggibile_mediano": float(elig_at_decision.median()),
+        "ribilanciamenti_sotto_soglia_minima": int((elig_at_decision < cfg.min_eligible).sum()),
+        "titoli_per_paniere_configurati": int(cfg.n_names),
+        "posizioni_massime_teoriche": int(cfg.n_names * cfg.n_tranches),
         **{f"{k} — {kk}": vv for k, r in results.items()
            for kk, vv in r.diagnostics.items()
            if kk in ("mesi_paniere_incompleto", "liquidazioni_forzate", "costi_totali")},
