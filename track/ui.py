@@ -77,23 +77,93 @@ def get_delisting_stress(cfg: TrackConfig, data_dir: str | None = None) -> pd.Da
 
 
 # ---------------------------------------------------------------------------
+def _secret(name: str) -> str | None:
+    """Legge un valore dai secrets Streamlit, dall'ambiente o dal file locale.
+
+    Su Streamlit Cloud vince `st.secrets` (la piattaforma li inietta). In
+    locale funziona anche lanciando l'app da un'altra cartella, perche'
+    `storage.read_secret` guarda pure nel secrets.toml del progetto.
+    """
+    try:
+        val = st.secrets.get(name)  # type: ignore[union-attr]
+        if val:
+            return str(val).strip()
+    except Exception:  # noqa: BLE001 - secrets.toml assente: caso normale in locale
+        pass
+    return storage.read_secret(name)
+
+
+@st.cache_resource(show_spinner="Scarico il dataset pubblicato…", max_entries=1)
+def _fetch_published_dataset(url: str | None, repo: str | None, token: str | None) -> bool:
+    """Un solo tentativo per container: il risultato resta in cache."""
+    return storage.ensure_dataset(url=url, repo=repo, token=token)
+
+
 def require_dataset() -> bool:
-    """Blocca la pagina con istruzioni chiare se i dati non ci sono."""
+    """Assicura che i dati ci siano, altrimenti blocca la pagina con istruzioni.
+
+    Sul deploy i pannelli non sono nel repository (sono grandi e vengono
+    rigenerati): la pipeline li pubblica come asset di una Release e l'app li
+    recupera da li' al primo avvio.
+    """
     if storage.dataset_available():
         return True
 
-    st.error("**Dataset non trovato.** L'app legge solo artefatti gia' calcolati.")
-    st.markdown(
-        f"Mancano: `{'`, `'.join(storage.missing_panels())}`\n\n"
-        "Genera i dati con uno di questi due comandi, dalla cartella del progetto:"
-    )
-    st.code("python -m pipeline.make_demo_data", language="bash")
-    st.caption("↑ dati **sintetici**, nessuna chiave API richiesta: serve a vedere "
-               "come funziona l'interfaccia. I numeri non sono reali.")
-    st.code("python -m pipeline.build_dataset", language="bash")
-    st.caption("↑ dati **reali** da EODHD. Richiede la chiave in `.streamlit/secrets.toml` "
-               "oppure nella variabile d'ambiente `EODHD_API_KEY`. "
-               "Circa 1.100-1.300 chiamate API, alcuni minuti.")
+    url = _secret("DATA_URL")
+    repo = _secret("DATA_REPO")
+    token = _secret("DATA_TOKEN") or _secret("GITHUB_TOKEN")
+
+    if url or repo:
+        try:
+            if _fetch_published_dataset(url, repo, token):
+                st.success("Dataset scaricato dalla Release.", icon="✅")
+                return True
+            st.error("Archivio scaricato ma incompleto: mancano ancora dei pannelli.")
+        except Exception as exc:  # noqa: BLE001 - va mostrato all'utente, non nei log
+            st.error(f"**Download del dataset fallito.**\n\n`{type(exc).__name__}: {exc}`")
+            _fetch_published_dataset.clear()
+
+    st.error("**Dataset non trovato.** L'app legge solo artefatti gia' calcolati, "
+             "non li costruisce mai da sola.")
+    st.markdown(f"Mancano: `{'`, `'.join(storage.missing_panels())}`")
+
+    tab_deploy, tab_locale = st.tabs(["Sei sul deploy", "Sei in locale"])
+
+    with tab_deploy:
+        st.markdown(
+            "La pipeline pubblica il dataset come asset di una **Release** su GitHub, "
+            "ma l'app non sa dove cercarlo. Indicaglielo nei *secrets* "
+            "dell'applicazione (su Streamlit Cloud: **Settings → Secrets**):"
+        )
+        st.code('DATA_REPO = "tuo-utente/tuo-repository"', language="toml")
+        st.caption(
+            "L'app cerchera' l'asset `la-pista-data.tar.gz` nell'ultima Release. "
+            "In alternativa puoi indicare l'URL diretto di un archivio con "
+            "`DATA_URL = \"https://…/la-pista-data.tar.gz\"`. "
+            "Se il repository e' privato aggiungi anche "
+            "`DATA_TOKEN = \"ghp_…\"` con permesso di lettura."
+        )
+        st.info(
+            "Controlla anche che il workflow **Aggiorna dataset** sia arrivato in "
+            "fondo e abbia effettivamente creato la Release: se lo step finale e' "
+            "fallito, l'archivio potrebbe essere solo fra gli artefatti del run, "
+            "che non sono scaricabili da qui.",
+            icon="ℹ️",
+        )
+
+    with tab_locale:
+        st.markdown("Genera i dati dalla cartella del progetto:")
+        st.code("python -m pipeline.make_demo_data", language="bash")
+        st.caption("↑ dati **sintetici**, nessuna chiave API: serve solo a vedere "
+                   "come funziona l'interfaccia. I numeri non sono reali.")
+        st.code("python -m pipeline.build_dataset", language="bash")
+        st.caption("↑ dati **reali**. Richiede la chiave in `.streamlit/secrets.toml` "
+                   "o nella variabile d'ambiente `EODHD_API_KEY`. "
+                   "Circa 1.200 chiamate API, alcuni minuti.")
+        st.markdown("Oppure scarica quello gia' pubblicato dalla pipeline:")
+        st.code("python -m pipeline.fetch_dataset --repo tuo-utente/tuo-repository",
+                language="bash")
+
     return False
 
 
