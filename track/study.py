@@ -52,7 +52,23 @@ class Dataset:
 
     @property
     def is_demo(self) -> bool:
-        return bool(self.manifest.get("demo_data", False))
+        """True se il dataset caricato e' sintetico.
+
+        Tollera la stringa "false": in Python e' truthy, e un manifest scritto
+        o modificato a mano marcherebbe come demo un dataset reale.
+        """
+        val = self.manifest.get("demo_data", False)
+        if isinstance(val, str):
+            return val.strip().lower() not in ("", "false", "0", "no")
+        return bool(val)
+
+    @property
+    def source(self) -> str:
+        return str(self.manifest.get("source", "sconosciuta"))
+
+    @property
+    def built_at(self) -> str:
+        return str(self.manifest.get("built_at", "data sconosciuta"))
 
 
 def load_dataset(directory=None) -> Dataset:
