@@ -85,12 +85,23 @@ def normalize_constituents(df: pd.DataFrame, today: pd.Timestamp | None = None) 
     out["end_date"] = out["end_date"].fillna(today)
     out = out[out["end_date"] >= out["start_date"]]
 
-    # un codice con piu' nomi distinti = sospetto riassegnazione
-    names_per_code = out.groupby("code")["name"].nunique()
-    reused = set(names_per_code[names_per_code > 1].index)
+    out = out.sort_values(["code", "start_date"]).reset_index(drop=True)
+
+    # Sospetto riassegnazione: un codice con piu' NOMI distinti, oppure con
+    # piu' PERIODI di appartenenza separati.
+    #
+    # Il secondo criterio serve per le fonti che non forniscono i nomi delle
+    # societa' uscite dall'indice: li' l'unico segnale disponibile e' che lo
+    # stesso simbolo compare in intervalli disgiunti. Puo' trattarsi di una
+    # societa' uscita e rientrata (caso benigno) o di un simbolo riassegnato a
+    # un'azienda diversa (caso velenoso: la serie prezzi incollerebbe due
+    # aziende). Senza i nomi non e' possibile distinguerli, quindi trattiamo
+    # entrambi come sospetti e teniamo solo il periodo piu' recente.
+    names_per_code = out.groupby("code")["name"].nunique(dropna=True)
+    spells_per_code = out.groupby("code").size()
+    reused = set(names_per_code[names_per_code > 1].index) | set(spells_per_code[spells_per_code > 1].index)
     out["ticker_reuse_suspect"] = out["code"].isin(reused)
 
-    out = out.sort_values(["code", "start_date"]).reset_index(drop=True)
     out["occurrence"] = out.groupby("code").cumcount()
     last_occ = out.groupby("code")["occurrence"].transform("max")
     out["is_latest_occurrence"] = out["occurrence"] == last_occ
