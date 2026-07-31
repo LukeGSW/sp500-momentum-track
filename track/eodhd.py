@@ -29,30 +29,16 @@ BASE_URL = "https://eodhd.com/api"
 
 
 def resolve_api_key() -> str:
-    """Cerca la chiave, in ordine: variabile d'ambiente, secrets Streamlit.
+    """Cerca la chiave in ambiente e nei secrets.toml (progetto e cartella corrente).
 
     La chiave non compare MAI negli artefatti ne' nei log. In GitHub Actions
     va passata come repository secret `EODHD_API_KEY`.
     """
-    import os
+    from .storage import read_secret
 
-    key = os.environ.get("EODHD_API_KEY", "").strip()
+    key = read_secret("EODHD_API_KEY")
     if key:
         return key
-
-    from pathlib import Path
-
-    for candidate in (
-        Path.cwd() / ".streamlit" / "secrets.toml",
-        Path(__file__).resolve().parent.parent / ".streamlit" / "secrets.toml",
-    ):
-        if candidate.exists():
-            import tomllib
-
-            data = tomllib.loads(candidate.read_text(encoding="utf-8"))
-            key = str(data.get("EODHD_API_KEY", "")).strip()
-            if key:
-                return key
 
     raise RuntimeError(
         "Chiave EODHD non trovata. Imposta la variabile d'ambiente EODHD_API_KEY "
