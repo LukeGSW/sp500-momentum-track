@@ -206,6 +206,16 @@ def main(argv: list[str] | None = None) -> int:
 
     # Le esclusioni si applicano QUI, prima di qualunque calcolo: cosi' sono
     # parte del metodo e non un ritocco a valle sui risultati.
+    # Registra COSA e' stato letto, non solo cosa e' stato applicato: un file
+    # non caricato e un file caricato ma incompleto produrrebbero altrimenti lo
+    # stesso manifest, rendendo impossibile capire cosa e' andato storto.
+    excl_manifest = exc.exclusions_manifest(args.exclusions)
+    log.info("     file esclusioni: %s (esiste: %s, righe: %d, impronta: %s)",
+             excl_manifest["file"], excl_manifest["esiste"],
+             excl_manifest["righe"], excl_manifest["impronta"])
+    if excl_manifest["ticker"]:
+        log.info("     ticker dichiarati: %s", ", ".join(excl_manifest["ticker"]))
+
     excl = exc.load_exclusions(args.exclusions)
     panels, excl_report = exc.apply_exclusions(
         {"close_adj": close_adj, "open_adj": open_adj,
@@ -217,10 +227,11 @@ def main(argv: list[str] | None = None) -> int:
     if excl_report:
         applicate = sum(1 for r in excl_report if r.get("applicata"))
         log.info("     %d esclusioni applicate su %d dichiarate", applicate, len(excl_report))
+    elif not excl_manifest["esiste"]:
+        log.warning("     File di esclusioni ASSENTE (%s): il dataset conterra' anche "
+                    "le serie con errori di dato accertati.", excl_manifest["file"])
     else:
-        log.warning("     NESSUNA esclusione applicata: il dataset conterra' anche le "
-                    "serie con errori di dato. Esegui  python -m pipeline.find_bad_series  "
-                    "dopo la costruzione per individuarle.")
+        log.warning("     Il file di esclusioni esiste ma non contiene righe valide.")
 
     membership = universe.build_membership(const, calendar)
     membership = membership.reindex(columns=close_adj.columns, fill_value=False)
@@ -241,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
 
     n_unclassified = int((sectors == "Non classificato").sum())
     provenance = {
+        "exclusions_source": excl_manifest,
         "exclusions_applied": excl_report,
         "exclusions_count": int(sum(1 for r in excl_report if r.get("applicata"))),
         "source": "EODHD (prezzi)",
