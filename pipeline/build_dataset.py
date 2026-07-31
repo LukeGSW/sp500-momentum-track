@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 from track import constituents as ct
+from track import exclusions as exc
 from track import features as ft
 from track import storage, universe
 from track.config import PREREGISTERED, TrackConfig
@@ -45,7 +46,7 @@ def assemble_price_panels(
     Il prezzo grezzo serve SOLO a decidere quante azioni compri; ogni
     rendimento passa dall'adjusted. Mischiarli gonfia i titoli ad alto dividendo.
     """
-    close_adj, open_adj, open_raw = {}, {}, {}
+    close_adj, open_adj, open_raw, close_raw = {}, {}, {}, {}
 
     for sym, df in series.items():
         code = sym.split(".")[0]
@@ -61,6 +62,7 @@ def assemble_price_panels(
         o_raw = o_raw.where(o_raw > 0)
 
         close_adj[code] = adj_close
+        close_raw[code] = raw_close.where(raw_close > 0)
         open_raw[code] = o_raw
         open_adj[code] = o_raw * factor
 
@@ -68,6 +70,7 @@ def assemble_price_panels(
         pd.DataFrame(close_adj).sort_index(axis=1),
         pd.DataFrame(open_adj).sort_index(axis=1),
         pd.DataFrame(open_raw).sort_index(axis=1),
+        pd.DataFrame(close_raw).sort_index(axis=1),
     )
 
 
@@ -117,10 +120,15 @@ def save_dataset(
     risk_free: pd.Series,
     provenance: dict,
     directory=None,
+    close_raw: pd.DataFrame | None = None,
 ) -> None:
     storage.save_panel(close_adj, "close_adj", directory)
     storage.save_panel(open_adj, "open_adj", directory)
     storage.save_panel(open_raw, "open_raw", directory)
+    if close_raw is not None:
+        # non e' fra i pannelli obbligatori: serve solo alla diagnostica, che
+        # confronta rendimento rettificato e grezzo per smascherare gli split
+        storage.save_panel(close_raw, "close_raw", directory)
     storage.save_panel(membership.astype(bool), "membership", directory)
     storage.save_panel(signals["force"], "force", directory)
     storage.save_panel(signals["velocity"], "velocity", directory)
@@ -148,6 +156,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="'github' (predefinita): ricostruzione MIT dal 1996, nessuna "
                              "entitlement richiesta. 'eodhd': endpoint sugli indici, dal 2000, "
                              "incluso solo in alcuni piani.")
+    parser.add_argument("--exclusions", default=None,
+                        help="file CSV delle serie compromesse da escludere "
+                             "(default: exclusions.csv nella radice del progetto). "
+                             "Usa --exclusions NONE per disattivarle.")
     parser.add_argument("--enrich-sectors", action="store_true",
                         help="recupera i settori delle societa' uscite dall'indice dai "
                              "Fundamentals EODHD per singolo titolo (~700 chiamate in piu', "
@@ -190,7 +202,22 @@ def main(argv: list[str] | None = None) -> int:
              100.0 * len(series) / max(len(symbols), 1))
 
     log.info("4/6  assemblaggio pannelli ...")
-    close_adj, open_adj, open_raw = assemble_price_panels(series, calendar)
+    close_adj, open_adj, open_raw, close_raw = assemble_price_panels(series, calendar)
+
+    # Le esclusioni si applicano QUI, prima di qualunque calcolo: cosi' sono
+    # parte del metodo e non un ritocco a valle sui risultati.
+    excl = exc.load_exclusions(args.exclusions)
+    panels, excl_report = exc.apply_exclusions(
+        {"close_adj": close_adj, "open_adj": open_adj,
+         "open_raw": open_raw, "close_raw": close_raw},
+        excl,
+    )
+    close_adj, open_adj = panels["close_adj"], panels["open_adj"]
+    open_raw, close_raw = panels["open_raw"], panels["close_raw"]
+    if excl_report:
+        applicate = sum(1 for r in excl_report if r.get("applicata"))
+        log.info("     %d esclusioni applicate su %d dichiarate", applicate, len(excl_report))
+
     membership = universe.build_membership(const, calendar)
     membership = membership.reindex(columns=close_adj.columns, fill_value=False)
     sectors = universe.sector_map(const).reindex(close_adj.columns)
@@ -210,6 +237,8 @@ def main(argv: list[str] | None = None) -> int:
 
     n_unclassified = int((sectors == "Non classificato").sum())
     provenance = {
+        "exclusions_applied": excl_report,
+        "exclusions_count": int(sum(1 for r in excl_report if r.get("applicata"))),
         "source": "EODHD (prezzi)",
         "constituents_source": args.constituents_source,
         "constituents_source_note": (
@@ -248,6 +277,7 @@ def main(argv: list[str] | None = None) -> int:
         close_adj=close_adj, open_adj=open_adj, open_raw=open_raw,
         membership=membership, signals=signals, sectors=sectors, names=names,
         risk_free=rf, provenance=provenance, directory=args.data_dir,
+        close_raw=close_raw,
     )
 
     log.info("FATTO. Coverage medio %.2f%%, minimo %.2f%%",
