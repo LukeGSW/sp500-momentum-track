@@ -34,6 +34,17 @@ def test_file_assente_non_e_un_errore(tmp_path: Path):
     assert exc.load_exclusions(tmp_path / "inesistente.csv") == []
 
 
+def test_none_esplicito_disattiva_le_esclusioni():
+    assert exc.load_exclusions("NONE") == []
+    assert exc.load_exclusions("none") == []
+
+
+def test_default_senza_argomenti_non_e_scambiato_per_NONE():
+    """str(None).upper() vale 'NONE': senza guardia il default salterebbe tutto."""
+    assert exc.load_exclusions(None), \
+        "il percorso predefinito deve caricare exclusions.csv, non disattivarle"
+
+
 def test_lettura_con_finestra(tmp_path: Path):
     p = _scrivi(tmp_path, 'RAI,2004-06-01,2004-12-31,"fusione non gestita"\n')
     lista = exc.load_exclusions(p)
