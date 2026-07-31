@@ -1,0 +1,65 @@
+name: Aggiorna dataset
+
+# La pipeline gira qui, non nell'app: l'app Streamlit legge solo artefatti.
+# Gli artefatti vengono pubblicati come asset di una Release, non committati,
+# per non gonfiare il repository.
+
+on:
+  schedule:
+    - cron: "30 7 2 * *"   # il 2 di ogni mese alle 07:30 UTC, a mercati chiusi
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Scarica solo i primi N ticker (0 = tutti). Utile per provare."
+        required: false
+        default: "0"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Installa dipendenze
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Test (il no-lookahead deve passare prima di toccare i dati)
+        run: python -m pytest tests -q
+
+      - name: Verifica preliminare dei dati EODHD
+        env:
+          EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
+        run: python -m pipeline.verify_data --sample 30
+
+      - name: Costruisci il dataset
+        env:
+          EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
+        run: python -m pipeline.build_dataset --limit ${{ github.event.inputs.limit || 0 }}
+
+      - name: Comprimi gli artefatti
+        run: |
+          cd data
+          tar -czf ../la-pista-data.tar.gz *.parquet manifest.json
+          cd ..
+          ls -lh la-pista-data.tar.gz
+
+      - name: Pubblica come Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: data-${{ github.run_number }}
+          name: Dataset ${{ github.run_number }}
+          files: la-pista-data.tar.gz
+          body: |
+            Dataset generato automaticamente.
+            Scaricare e scompattare in `data/` prima di avviare l'app.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
