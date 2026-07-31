@@ -69,7 +69,11 @@ jobs:
             echo "::warning::escludere le serie prezzi con errori accertati (es. RAI)."
             echo "::warning::I risultati conterranno i mesi anomali. Caricalo e rilancia."
           else
-            echo "exclusions.csv presente: $(grep -vc '^#' exclusions.csv) righe (header incluso)."
+            # Stampare i ticker, non solo il conteggio: e' l'unico modo per
+            # accorgersi subito che il file caricato non e' quello aggiornato.
+            echo "exclusions.csv trovato. Ticker dichiarati:"
+            grep -v '^#' exclusions.csv | tail -n +2 | cut -d, -f1 | sed 's/^/  - /'
+            echo "  (sha256: $(sha256sum exclusions.csv | cut -c1-12))"
           fi
           echo "Struttura del repository completa."
 
